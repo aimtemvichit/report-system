@@ -9,7 +9,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 # ================= SETUP =================
-st.set_page_config(page_title="Command Center", layout="wide")
+st.set_page_config(page_title="WAR ROOM", layout="wide")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -18,13 +18,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
-if "last_refresh" not in st.session_state:
-    st.session_state["last_refresh"] = time.time()
+if "refresh" not in st.session_state:
+    st.session_state["refresh"] = time.time()
 
-# auto refresh (safe, no plugin)
+# auto refresh (safe)
 if st.session_state["login"]:
-    if time.time() - st.session_state["last_refresh"] > 5:
-        st.session_state["last_refresh"] = time.time()
+    if time.time() - st.session_state["refresh"] > 5:
+        st.session_state["refresh"] = time.time()
         st.rerun()
 
 # ================= DB =================
@@ -56,21 +56,21 @@ STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡"
 UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
 
 # ================= USER =================
-def user_page():
+def user_app():
 
-    st.title("📌 ระบบรายงานหน่วย")
+    st.title("📌 UNIT REPORT SYSTEM")
 
     unit = st.selectbox("หน่วย", UNITS[1:])
-
     report_date = st.date_input("วันที่รายงาน")
 
     task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
+
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
     status = st.selectbox("สถานะ", STATUS)
 
-    problem = st.text_area("ปัญหา / ข้อขัดข้อง")
+    problem = st.text_area("ปัญหา")
 
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
@@ -101,9 +101,9 @@ def user_page():
     st.stop()
 
 # ================= LOGIN =================
-def login_page():
+def login():
 
-    st.title("🔐 LOGIN กกร.")
+    st.title("🔐 WAR ROOM LOGIN")
 
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
@@ -123,8 +123,6 @@ def get_data():
 def export_ppt(data):
 
     prs = Presentation()
-    prs.slide_width = Inches(13.33)
-    prs.slide_height = Inches(7.5)
 
     status_count = {s:0 for s in STATUS}
 
@@ -144,19 +142,21 @@ def export_ppt(data):
 
     # summary slide
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "📊 SUMMARY"
+    slide.shapes.title.text = "WAR ROOM SUMMARY"
 
-    slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), 3).text = f"""
-จำนวนทั้งหมด: {len(data)}
-ค้าง: {status_count['ค้าง 🔴']}
-กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
-เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
+    slide.shapes.add_textbox(
+        Inches(0.5), Inches(1), Inches(6), 3
+    ).text = f"""
+TOTAL: {len(data)}
+🔴 ค้าง: {status_count['ค้าง 🔴']}
+🟡 ดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
+🟢 เสร็จ: {status_count['เสร็จสิ้น 🟢']}
 """
 
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # detail slides
+    # detail
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -171,7 +171,9 @@ def export_ppt(data):
 ปัญหา: {d[6]}
 """
 
-        slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(6), 3).text = text
+        slide.shapes.add_textbox(
+            Inches(0.5), Inches(0.5), Inches(6), 3
+        ).text = text
 
         if d[7]:
             imgs = d[7].split(",")
@@ -190,28 +192,28 @@ def export_ppt(data):
     buf.seek(0)
 
     st.download_button(
-        "📥 Export PPT",
+        "📥 Download PPT",
         buf,
-        file_name="report.pptx"
+        file_name="war_room_report.pptx"
     )
 
 # ================= ADMIN =================
-def admin_page():
+def admin_app():
 
-    st.title("📊 COMMAND CENTER")
+    st.title("🚨 WAR ROOM COMMAND CENTER")
 
     with st.sidebar:
 
-        if st.button("🚪 Logout"):
+        if st.button("Logout"):
             st.session_state["login"] = False
             st.rerun()
 
-        st.subheader("Filter")
+        st.subheader("FILTER")
 
         selected_unit = st.selectbox("หน่วย", UNITS)
 
-        from_date = st.date_input("จากวันที่")
-        to_date = st.date_input("ถึงวันที่")
+        from_date = st.date_input("From")
+        to_date = st.date_input("To")
 
     raw = get_data()
     data = []
@@ -221,19 +223,23 @@ def admin_page():
         try:
             dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
 
-            date_ok = from_date <= dt <= to_date
-            unit_ok = (selected_unit == "ทั้งหมด" or d[1] == selected_unit)
+            ok_date = from_date <= dt <= to_date
+            ok_unit = (selected_unit == "ทั้งหมด" or d[1] == selected_unit)
 
-            if date_ok and unit_ok:
+            if ok_date and ok_unit:
                 data.append(d)
 
         except:
             pass
 
-    # ================= DASHBOARD =================
-    st.subheader(f"📊 Dashboard: {selected_unit}")
+    # ================= ALERT =================
+    overdue = [d for d in data if d[5] == "ค้าง 🔴"]
 
-    st.metric("จำนวนทั้งหมด", len(data))
+    if overdue:
+        st.error(f"🚨 งานค้าง {len(overdue)} รายการ")
+
+    # ================= KPI =================
+    st.subheader(f"STATUS: {selected_unit}")
 
     status_count = {s:0 for s in STATUS}
     unit_count = {}
@@ -248,23 +254,40 @@ def admin_page():
     c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
     c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
+    # ================= CHART =================
+    st.subheader("📊 ANALYTICS")
+
+    fig1, ax1 = plt.subplots()
+    ax1.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
+    st.pyplot(fig1)
+
+    fig2, ax2 = plt.subplots()
+    ax2.bar(status_count.keys(), status_count.values())
+    st.pyplot(fig2)
+
+    # ================= UNIT =================
+    st.subheader("🏢 UNIT LOAD")
+
+    for u,v in sorted(unit_count.items(), key=lambda x: x[1], reverse=True):
+        st.write(f"{u} → {v}")
+
     # ================= LIST =================
-    st.subheader("📄 รายการ")
+    st.subheader("📄 LIVE FEED")
 
     for d in data[:30]:
         st.write(f"{d[1]} | {d[2]} | {d[5]}")
 
     # ================= EXPORT =================
-    if st.button("📤 Export PPT"):
+    if st.button("📤 EXPORT WAR ROOM PPT"):
         export_ppt(data)
 
 # ================= ROUTER =================
 def main():
 
     if st.session_state["login"]:
-        admin_page()
+        admin_app()
     else:
-        login_page()
-        user_page()
+        login()
+        user_app()
 
 main()
