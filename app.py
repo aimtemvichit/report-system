@@ -9,7 +9,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
-st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
+st.set_page_config(page_title="WAR ROOM", layout="wide")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -21,7 +21,7 @@ if "login" not in st.session_state:
 if "refresh" not in st.session_state:
     st.session_state["refresh"] = time.time()
 
-# auto refresh (safe, no plugin)
+# auto refresh
 if st.session_state["login"]:
     if time.time() - st.session_state["refresh"] > 5:
         st.session_state["refresh"] = time.time()
@@ -54,6 +54,11 @@ ADMIN_PASS = "St006904#"
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
 UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+
+# ================= DELETE =================
+def delete_report(report_id):
+    c.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+    conn.commit()
 
 # ================= USER =================
 def user_app():
@@ -118,12 +123,12 @@ def login_page():
 def get_data():
     return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
-# ================= EXPORT PPT =================
+# ================= EXPORT =================
 def export_ppt(data):
 
     prs = Presentation()
 
-    status_count = {s:0 for s in STATUS}
+    status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
 
     for d in data:
         status_count[d[5]] += 1
@@ -147,15 +152,15 @@ def export_ppt(data):
         Inches(0.5), Inches(1), Inches(6), 3
     ).text = f"""
 TOTAL: {len(data)}
-🔴 ค้าง: {status_count['ค้าง 🔴']}
-🟡 ดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
-🟢 เสร็จ: {status_count['เสร็จสิ้น 🟢']}
+🔴 {status_count['ค้าง 🔴']}
+🟡 {status_count['กำลังดำเนินการ 🟡']}
+🟢 {status_count['เสร็จสิ้น 🟢']}
 """
 
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # detail slides
+    # details
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -163,7 +168,6 @@ TOTAL: {len(data)}
 
         text = f"""
 หน่วย: {d[1]}
-วันที่: {d[8]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
 สถานะ: {d[5]}
@@ -190,11 +194,7 @@ TOTAL: {len(data)}
     prs.save(buf)
     buf.seek(0)
 
-    st.download_button(
-        "📥 Export PPT",
-        buf,
-        file_name="war_room.pptx"
-    )
+    st.download_button("📥 Export PPT", buf, file_name="war_room.pptx")
 
 # ================= ADMIN =================
 def admin_app():
@@ -207,14 +207,12 @@ def admin_app():
             st.session_state["login"] = False
             st.rerun()
 
-        st.subheader("FILTER")
-
         selected_unit = st.selectbox("หน่วย", UNITS)
 
         from_date = st.date_input("From")
         to_date = st.date_input("To")
 
-    # ================= FILTER DATA =================
+    # ================= FILTER =================
     raw = get_data()
     data = []
 
@@ -229,60 +227,31 @@ def admin_app():
             pass
 
     # ================= ALERT =================
-    overdue = [d for d in data if d[5] == "ค้าง 🔴"]
-
-    if overdue:
-        st.error(f"🚨 งานค้าง {len(overdue)} รายการ")
+    if any(d[5] == "ค้าง 🔴" for d in data):
+        st.error("🚨 มีงานค้าง!")
 
     # ================= KPI =================
-    st.subheader(f"STATUS DASHBOARD: {selected_unit}")
-
-    status_count = {s:0 for s in STATUS}
-    unit_count = {}
+    status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
 
     for d in data:
         status_count[d[5]] += 1
-        unit_count[d[1]] = unit_count.get(d[1], 0) + 1
 
-    c1, c2, c3 = st.columns(3)
+    c1,c2,c3 = st.columns(3)
 
     c1.metric("🔴 ค้าง", status_count["ค้าง 🔴"])
     c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
     c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
-    # ================= CHART =================
-    st.subheader("📊 ANALYTICS")
-
-    fig1, ax1 = plt.subplots()
-    ax1.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    st.pyplot(fig1)
-
-    fig2, ax2 = plt.subplots()
-    ax2.bar(status_count.keys(), status_count.values())
-    st.pyplot(fig2)
-
-    # ================= UNIT LOAD =================
-    st.subheader("🏢 UNIT LOAD")
-
-    for u, v in sorted(unit_count.items(), key=lambda x: x[1], reverse=True):
-        st.write(f"{u} → {v}")
-
-    # ================= LIVE TABLE =================
+    # ================= TABLE + DELETE =================
     st.subheader("📄 LIVE REPORTS")
 
     for d in data:
 
-        col1, col2 = st.columns([3,1])
+        col1,col2 = st.columns([3,1])
 
         with col1:
 
-            if d[5] == "ค้าง 🔴":
-                st.error(f"{d[1]} | {d[2]}")
-            elif d[5] == "กำลังดำเนินการ 🟡":
-                st.warning(f"{d[1]} | {d[2]}")
-            else:
-                st.success(f"{d[1]} | {d[2]}")
-
+            st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
             st.write(f"📅 {d[8]}")
             st.write(f"📊 {d[4]}%")
             st.write(f"🧾 {d[3]}")
@@ -291,15 +260,21 @@ def admin_app():
             if d[7]:
                 imgs = d[7].split(",")
                 cols = st.columns(min(len(imgs),3))
-
                 for i,img in enumerate(imgs):
                     if os.path.exists(img):
                         cols[i%3].image(img, use_container_width=True)
 
         with col2:
+
             st.metric("Progress", f"{d[4]}%")
 
+            if st.button(f"🗑 ลบ", key=f"del_{d[0]}"):
+                delete_report(d[0])
+                st.rerun()
+
     # ================= EXPORT =================
+    st.markdown("---")
+
     if st.button("📤 EXPORT PPT"):
         export_ppt(data)
 
