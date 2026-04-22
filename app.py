@@ -205,6 +205,9 @@ def admin_app():
 
     st.title("📊 กกร. Command Center")
 
+        st.write(UPLOAD_DIR)
+        st.write(os.listdir(UPLOAD_DIR))
+
     data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
     st.metric("จำนวนรายงานทั้งหมด", len(data))
