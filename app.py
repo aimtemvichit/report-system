@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
-# ================= CONFIG =================
+# ================= SETUP =================
 st.set_page_config(page_title="Command Center", layout="wide")
 
 UPLOAD_DIR = "uploads"
@@ -21,7 +21,7 @@ if "login" not in st.session_state:
 if "last_refresh" not in st.session_state:
     st.session_state["last_refresh"] = time.time()
 
-# auto refresh (safe)
+# auto refresh (safe, no plugin)
 if st.session_state["login"]:
     if time.time() - st.session_state["last_refresh"] > 5:
         st.session_state["last_refresh"] = time.time()
@@ -47,29 +47,30 @@ CREATE TABLE IF NOT EXISTS reports (
 """)
 conn.commit()
 
-# ================= CONSTANT =================
+# ================= CONFIG =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
+UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+
 # ================= USER =================
-def user():
+def user_page():
 
     st.title("📌 ระบบรายงานหน่วย")
 
-    unit = st.selectbox("หน่วย", ["พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ."])
+    unit = st.selectbox("หน่วย", UNITS[1:])
 
     report_date = st.date_input("วันที่รายงาน")
 
     task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
-
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
     status = st.selectbox("สถานะ", STATUS)
 
-    problem = st.text_area("ปัญหา")
+    problem = st.text_area("ปัญหา / ข้อขัดข้อง")
 
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
@@ -100,28 +101,30 @@ def user():
     st.stop()
 
 # ================= LOGIN =================
-def login():
+def login_page():
 
-    st.title("🔐 LOGIN")
+    st.title("🔐 LOGIN กกร.")
 
-    u = st.text_input("User")
-    p = st.text_input("Pass", type="password")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
 
     if st.button("Login"):
         if u == ADMIN_USER and p == ADMIN_PASS:
             st.session_state["login"] = True
             st.rerun()
         else:
-            st.error("ผิด")
+            st.error("Login ไม่ถูกต้อง")
 
 # ================= DATA =================
 def get_data():
     return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
-# ================= EXPORT =================
-def export(data):
+# ================= EXPORT PPT =================
+def export_ppt(data):
 
     prs = Presentation()
+    prs.slide_width = Inches(13.33)
+    prs.slide_height = Inches(7.5)
 
     status_count = {s:0 for s in STATUS}
 
@@ -139,12 +142,12 @@ def export(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # summary
+    # summary slide
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "SUMMARY"
+    slide.shapes.title.text = "📊 SUMMARY"
 
     slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), 3).text = f"""
-ทั้งหมด: {len(data)}
+จำนวนทั้งหมด: {len(data)}
 ค้าง: {status_count['ค้าง 🔴']}
 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
@@ -153,7 +156,7 @@ def export(data):
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # details
+    # detail slides
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -161,6 +164,7 @@ def export(data):
 
         text = f"""
 หน่วย: {d[1]}
+วันที่: {d[8]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
 สถานะ: {d[5]}
@@ -186,66 +190,81 @@ def export(data):
     buf.seek(0)
 
     st.download_button(
-        "Export PPT",
+        "📥 Export PPT",
         buf,
         file_name="report.pptx"
     )
 
 # ================= ADMIN =================
-def admin():
+def admin_page():
 
-    st.title("📊 Command Center")
+    st.title("📊 COMMAND CENTER")
 
     with st.sidebar:
 
-        if st.button("Logout"):
+        if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
         st.subheader("Filter")
 
-        from_date = st.date_input("From")
-        to_date = st.date_input("To")
+        selected_unit = st.selectbox("หน่วย", UNITS)
+
+        from_date = st.date_input("จากวันที่")
+        to_date = st.date_input("ถึงวันที่")
 
     raw = get_data()
     data = []
 
     for d in raw:
+
         try:
             dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
-            if from_date <= dt <= to_date:
+
+            date_ok = from_date <= dt <= to_date
+            unit_ok = (selected_unit == "ทั้งหมด" or d[1] == selected_unit)
+
+            if date_ok and unit_ok:
                 data.append(d)
+
         except:
             pass
 
-    st.metric("ทั้งหมด", len(data))
+    # ================= DASHBOARD =================
+    st.subheader(f"📊 Dashboard: {selected_unit}")
+
+    st.metric("จำนวนทั้งหมด", len(data))
 
     status_count = {s:0 for s in STATUS}
+    unit_count = {}
 
     for d in data:
         status_count[d[5]] += 1
+        unit_count[d[1]] = unit_count.get(d[1], 0) + 1
 
-    col1,col2,col3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    col1.metric("ค้าง", status_count["ค้าง 🔴"])
-    col2.metric("ทำอยู่", status_count["กำลังดำเนินการ 🟡"])
-    col3.metric("เสร็จ", status_count["เสร็จสิ้น 🟢"])
+    c1.metric("🔴 ค้าง", status_count["ค้าง 🔴"])
+    c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
+    c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
-    st.subheader("รายการ")
+    # ================= LIST =================
+    st.subheader("📄 รายการ")
 
     for d in data[:30]:
         st.write(f"{d[1]} | {d[2]} | {d[5]}")
 
-    if st.button("Export PPT"):
-        export(data)
+    # ================= EXPORT =================
+    if st.button("📤 Export PPT"):
+        export_ppt(data)
 
 # ================= ROUTER =================
 def main():
 
     if st.session_state["login"]:
-        admin()
+        admin_page()
     else:
-        login()
-        user()
+        login_page()
+        user_page()
 
 main()
