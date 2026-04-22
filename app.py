@@ -10,19 +10,18 @@ from pptx.util import Inches
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
 
-# ================= REAL-TIME =================
-st.autorefresh(interval=5000, key="refresh")
+# ================= AUTO REFRESH (SAFE METHOD) =================
+st.experimental_set_query_params(t=str(datetime.datetime.now()))
 
 # ================= ADMIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
-# ================= SESSION =================
 if "admin_login" not in st.session_state:
     st.session_state["admin_login"] = False
 
 # ================= UPLOAD =================
-UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
+UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ================= DB =================
@@ -63,7 +62,7 @@ def user_app():
         "กรม ทย.รอ.อย."
     ])
 
-    report_date = st.date_input("📅 วันที่รายงาน")
+    report_date = st.date_input("วันที่รายงาน")
 
     task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
@@ -126,27 +125,11 @@ def login_page():
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# ================= FILTER =================
+# ================= DATA =================
 def get_data():
 
-    st.sidebar.header("📅 Filter")
-
-    from_date = st.sidebar.date_input("From")
-    to_date = st.sidebar.date_input("To")
-
-    data = c.execute("SELECT * FROM reports").fetchall()
-
-    filtered = []
-
-    for d in data:
-        try:
-            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
-            if from_date <= d_date <= to_date:
-                filtered.append(d)
-        except:
-            pass
-
-    return filtered
+    data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+    return data
 
 # ================= EXPORT PPT =================
 def export_ppt(data):
@@ -167,7 +150,7 @@ def export_ppt(data):
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # CHART
+    # chart
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     bar = "bar.png"
@@ -180,7 +163,7 @@ def export_ppt(data):
     plt.savefig(pie)
     plt.close()
 
-    # SLIDE 1
+    # slide 1
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "📊 Dashboard Summary"
 
@@ -200,7 +183,7 @@ def export_ppt(data):
     if os.path.exists(pie):
         slide.shapes.add_picture(pie, Inches(6), Inches(4), width=Inches(3.5))
 
-    # DETAILS
+    # details
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -231,14 +214,11 @@ def export_ppt(data):
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("📊 กกร. Command Center (Real-Time)")
+    st.title("📊 กกร. Command Center (Live)")
 
-    # 🔥 LOGOUT BUTTON (ครบแล้ว)
+    # 🔥 LOGOUT
     with st.sidebar:
-        st.title("🔐 Admin Panel")
-
-        st.success("สถานะ: Logged in")
-
+        st.title("Admin")
         if st.button("🚪 Logout"):
             st.session_state["admin_login"] = False
             st.rerun()
@@ -247,9 +227,9 @@ def admin_app():
 
     st.metric("จำนวนรายงาน", len(data))
 
-    st.subheader("📄 รายงาน Real-Time")
+    st.subheader("📄 รายงานล่าสุด")
 
-    for d in data:
+    for d in data[:20]:
 
         st.write("---")
         st.write("หน่วย:", d[1])
