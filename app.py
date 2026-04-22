@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
-# ================= SETUP =================
+# ================= CONFIG =================
 st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
@@ -27,7 +27,7 @@ if st.session_state["login"]:
         st.session_state["refresh"] = time.time()
         st.rerun()
 
-# ================= DB =================
+# ================= DATABASE =================
 conn = sqlite3.connect("reports.db", check_same_thread=False)
 c = conn.cursor()
 
@@ -55,7 +55,7 @@ STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡"
 
 UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
 
-# ================= DELETE FUNCTION =================
+# ================= DELETE =================
 def delete_report(report_id):
     c.execute("DELETE FROM reports WHERE id = ?", (report_id,))
     conn.commit()
@@ -78,7 +78,7 @@ def user_app():
 
     status = st.selectbox("สถานะ", STATUS)
 
-    problem = st.text_area("ปัญหา / ข้อขัดข้อง")
+    problem = st.text_area("ปัญหา")
 
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
@@ -123,7 +123,7 @@ def login_page():
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# ================= EXPORT =================
+# ================= EXPORT PPT =================
 def export_ppt(data):
 
     prs = Presentation()
@@ -209,8 +209,9 @@ def admin_app():
         from_date = st.date_input("From")
         to_date = st.date_input("To")
 
-    # ================= ALWAYS FRESH DATA =================
+    # ================= FILTER DATA (FIXED) =================
     raw = get_data()
+
     data = []
 
     for d in raw:
@@ -218,8 +219,12 @@ def admin_app():
         try:
             dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
 
-            if from_date <= dt <= to_date and (unit_filter == "ทั้งหมด" or d[1] == unit_filter):
-                data.append(d)
+            if from_date <= dt <= to_date:
+
+                if unit_filter == "ทั้งหมด":
+                    data.append(d)
+                elif d[1] == unit_filter:
+                    data.append(d)
 
         except:
             pass
@@ -240,10 +245,8 @@ def admin_app():
     c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
     c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
-    # ================= LIVE REPORT + DELETE FIX =================
-    st.subheader("📄 LIVE REPORTS")
-
-    data = get_data()   # 🔥 FIX สำคัญ: reload ทุกครั้ง
+    # ================= LIVE REPORTS =================
+    st.subheader("📄 LIVE REPORTS (FILTERED BY UNIT)")
 
     for d in data:
 
@@ -251,7 +254,13 @@ def admin_app():
 
         with col1:
 
-            st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
+            if d[5] == "ค้าง 🔴":
+                st.error(f"{d[1]} | {d[2]}")
+            elif d[5] == "กำลังดำเนินการ 🟡":
+                st.warning(f"{d[1]} | {d[2]}")
+            else:
+                st.success(f"{d[1]} | {d[2]}")
+
             st.write(f"📅 {d[8]}")
             st.write(f"📊 {d[4]}%")
             st.write(f"🧾 {d[3]}")
@@ -271,7 +280,6 @@ def admin_app():
 
             if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete_report(d[0])
-                st.success("ลบแล้ว")
                 st.rerun()
 
     # ================= EXPORT =================
