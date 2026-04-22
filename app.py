@@ -1,23 +1,23 @@
 import streamlit as st
 import sqlite3
 import datetime
-import time
 import os
 import io
+from streamlit_autorefresh import st_autorefresh
 from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
 
-# ================= ADMIN LOGIN =================
+# ================= ADMIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
 
-# ================= IMAGE STORAGE =================
+# ================= IMAGE FOLDER =================
 UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -52,7 +52,6 @@ STATUS_OPTIONS = [
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none;}
-[data-testid="stSidebarNav"] {display: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -70,7 +69,6 @@ def user_app():
         "กรม ทย.รอ.อย."
     ])
 
-    # ================= REPORT DATE =================
     report_date = st.date_input("📅 วันที่รายงาน")
 
     task = st.text_input("งาน/ภารกิจ")
@@ -82,8 +80,8 @@ def user_app():
 
     problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
 
-    # ================= IMAGES =================
-    files = st.file_uploader("📷 แนบรูป (หลายรูปได้)", accept_multiple_files=True)
+    # ================= IMAGE =================
+    files = st.file_uploader("📷 แนบรูป", accept_multiple_files=True)
 
     image_paths = []
 
@@ -94,7 +92,7 @@ def user_app():
                 out.write(f.getbuffer())
             image_paths.append(path)
 
-    # ================= SUBMIT =================
+    # ================= SAVE =================
     if st.button("📤 ส่งรายงาน"):
 
         c.execute("""
@@ -156,7 +154,7 @@ def export_ppt(data):
         Inches(10), Inches(4)
     ).text = f"จำนวนรายการ: {len(data)}"
 
-    # DETAILS
+    # DETAIL
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -176,7 +174,6 @@ def export_ppt(data):
             Inches(6), Inches(4)
         ).text = text
 
-        # IMAGES
         if d[7]:
             imgs = d[7].split(",")
             x = 7
@@ -199,20 +196,20 @@ def export_ppt(data):
     )
 
 # =====================================================
-# 🧠 ADMIN DASHBOARD (REAL TIME FIXED)
+# 🧠 ADMIN DASHBOARD (REAL-TIME FIXED)
 # =====================================================
 def admin_app():
 
-    st.title("📊 กกร. Command Center")
+    # ✅ REAL-TIME FIX (ถูกต้อง)
+    st_autorefresh(interval=3000, key="refresh")
 
-    # auto refresh (FIX REAL-TIME)
-    st_autorefresh = st.experimental_rerun
+    st.title("📊 กกร. Command Center")
 
     data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
     st.metric("จำนวนรายงานทั้งหมด", len(data))
 
-    # ================= CHART =================
+    # ================= UNIT CHART =================
     st.subheader("📌 ภาพรวมรายหน่วย")
 
     unit_map = {}
