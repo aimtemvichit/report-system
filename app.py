@@ -1,18 +1,12 @@
 import streamlit as st
 import sqlite3
 import datetime
+import time
 from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
-
-# ================= ROUTE =================
-mode = st.query_params.get("mode", "user")
-if isinstance(mode, list):
-    mode = mode[0]
-
-is_admin = (mode == "admin")
 
 # ================= DATABASE =================
 conn = sqlite3.connect("reports.db", check_same_thread=False)
@@ -26,12 +20,13 @@ CREATE TABLE IF NOT EXISTS reports (
     detail TEXT,
     progress INTEGER,
     status TEXT,
+    problem TEXT,
     time TEXT
 )
 """)
 conn.commit()
 
-# ================= FORCE HIDE SIDEBAR =================
+# ================= HIDE SIDEBAR =================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none;}
@@ -39,14 +34,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ================= ADMIN LOGIN =================
+ADMIN_USER = "kgr"
+ADMIN_PASS = "1234"
+
+if "admin_login" not in st.session_state:
+    st.session_state.admin_login = False
+
 # =====================================================
-# 🔵 USER MODE (กรอกอย่างเดียว)
+# 🔵 USER MODE (NO LOGIN)
 # =====================================================
 def user_app():
 
-    st.title("📌 ระบบรายงาน (หน่วย)")
+    st.title("📌 ระบบรายงานหน่วย (Field Report)")
 
-    st.warning("🔒 โหมดหน่วย: ใช้กรอกข้อมูลเท่านั้น")
+    st.info("👷 โหมดหน่วย: กรอกข้อมูลได้ทันที")
 
     unit = st.selectbox("หน่วย", [
         "พล.1 รอ.",
@@ -55,9 +57,10 @@ def user_app():
         "กรม ทย.รอ.อย."
     ])
 
-    task = st.text_input("ชื่องาน")
+    task = st.text_input("งาน/ภารกิจ")
     detail = st.text_area("รายละเอียดงาน")
-    progress = st.number_input("ความคืบหน้า (%)", 0, 100)
+
+    progress = st.slider("ความคืบหน้า (%)", 0, 100, 0)
 
     status = st.selectbox("สถานะ", [
         "ค้าง",
@@ -65,13 +68,15 @@ def user_app():
         "เสร็จสิ้น"
     ])
 
-    if st.button("ส่งรายงาน"):
+    problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
+
+    if st.button("📤 ส่งรายงาน"):
 
         c.execute("""
-            INSERT INTO reports (unit, task, detail, progress, status, time)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO reports (unit, task, detail, progress, status, problem, time)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            unit, task, detail, progress, status,
+            unit, task, detail, progress, status, problem,
             str(datetime.datetime.now())
         ))
 
@@ -81,109 +86,114 @@ def user_app():
     st.stop()
 
 # =====================================================
-# 🔴 ADMIN MODE (ครบทุกอย่าง)
+# 🔴 ADMIN LOGIN PAGE
+# =====================================================
+def admin_login_page():
+
+    st.title("🔐 กกร. Login")
+
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+
+        if u == ADMIN_USER and p == ADMIN_PASS:
+            st.session_state.admin_login = True
+            st.rerun()
+        else:
+            st.error("รหัสไม่ถูกต้อง")
+
+# =====================================================
+# 🔴 ADMIN DASHBOARD (REAL TIME + FULL CONTROL)
 # =====================================================
 def admin_app():
 
-    st.title("📊 กกร. Control Center")
+    st.title("📊 กกร. Command Center (Real-Time)")
 
+    data = c.session_state = None  # กัน cache
     data = c.execute("SELECT * FROM reports").fetchall()
 
-    # ================= MENU =================
-    menu = st.radio("เมนู", [
-        "Dashboard",
-        "ค้นหางาน",
-        "รายละเอียด",
-        "Export PowerPoint"
-    ])
+    # ================= SUMMARY =================
+    st.metric("จำนวนรายงานทั้งหมด", len(data))
 
-    # ================= DASHBOARD =================
-    if menu == "Dashboard":
+    # ================= GROUP BY UNIT =================
+    st.subheader("📌 ภาพรวมแยกตามหน่วย")
 
-        st.metric("จำนวนงานทั้งหมด", len(data))
+    unit_count = {}
 
-        avg = sum([d[4] for d in data]) / len(data) if data else 0
-        st.metric("ความคืบหน้าเฉลี่ย", f"{avg:.2f}%")
+    for d in data:
+        unit_count[d[1]] = unit_count.get(d[1], 0) + 1
 
-        status = {"ค้าง":0, "กำลังดำเนินการ":0, "เสร็จสิ้น":0}
+    st.bar_chart(unit_count)
 
-        for d in data:
-            if "ค้าง" in d[5]:
-                status["ค้าง"] += 1
-            elif "ดำเนิน" in d[5]:
-                status["กำลังดำเนินการ"] += 1
-            else:
-                status["เสร็จสิ้น"] += 1
+    # ================= FILTER BY UNIT =================
+    st.subheader("🔍 รายงานแยกตามหน่วย")
 
-        st.bar_chart(status)
+    if unit_count:
+        selected_unit = st.selectbox("เลือกหน่วย", list(unit_count.keys()))
 
-    # ================= SEARCH =================
-    elif menu == "ค้นหางาน":
+        filtered = [d for d in data if d[1] == selected_unit]
 
-        key = st.text_input("ค้นหา")
-
-        results = [d for d in data if key.lower() in str(d).lower()]
-
-        st.write(f"พบ {len(results)} รายการ")
-
-        for r in results:
+        for d in filtered:
             st.write("---")
-            st.write("หน่วย:", r[1])
-            st.write("งาน:", r[2])
-            st.write("ความคืบหน้า:", r[4], "%")
-
-    # ================= DETAIL =================
-    elif menu == "รายละเอียด":
-
-        for d in data:
-            st.write("---")
-            st.write("หน่วย:", d[1])
             st.write("งาน:", d[2])
             st.write("รายละเอียด:", d[3])
             st.write("ความคืบหน้า:", d[4], "%")
             st.write("สถานะ:", d[5])
+            st.write("ปัญหา:", d[6])
 
-    # ================= EXPORT PPT =================
-    elif menu == "Export PowerPoint":
+    # ================= AUTO REFRESH =================
+    st.caption("🔄 ระบบ real-time (auto refresh)")
 
-        if st.button("สร้างไฟล์ PPT"):
+    time.sleep(2)
+    st.rerun()
 
-            prs = Presentation()
-            prs.slide_width = Inches(13.33)
-            prs.slide_height = Inches(7.5)
+    # ================= EXPORT =================
+    st.subheader("📑 Export PowerPoint")
 
-            # Slide 1 summary
+    if st.button("สร้าง PPT"):
+
+        prs = Presentation()
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+
+        for d in data:
+
             slide = prs.slides.add_slide(prs.slide_layouts[5])
-            slide.shapes.title.text = "Executive Summary"
+            slide.shapes.title.text = d[2]
 
-            summary = prs.slides.add_slide(prs.slide_layouts[5])
-            summary.shapes.title.text = f"รวม {len(data)} รายการ"
-
-            # Slides per task
-            for d in data:
-
-                slide = prs.slides.add_slide(prs.slide_layouts[5])
-                slide.shapes.title.text = d[2]
-
-                txt = f"""
+            txt = f"""
 หน่วย: {d[1]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
 สถานะ: {d[5]}
+ปัญหา: {d[6]}
 """
 
-                slide.shapes.add_textbox(
-                    Inches(1), Inches(1.5),
-                    Inches(8), Inches(4)
-                ).text = txt
+            slide.shapes.add_textbox(
+                Inches(1), Inches(1.5),
+                Inches(8), Inches(4)
+            ).text = txt
 
-            prs.save("report.pptx")
-            st.success("Export สำเร็จ")
+        prs.save("report.pptx")
+        st.success("Export สำเร็จ")
 
 # =====================================================
 # 🔥 ROUTER
 # =====================================================
-if is_admin:
+
+# ADMIN FLOW
+if st.session_state.admin_login:
     admin_app()
+
 else:
-    user_app()
+    # ถ้าไม่ใช่ admin → เข้า login หรือ user
+    mode = st.query_params.get("mode", "user")
+
+    if isinstance(mode, list):
+        mode = mode[0]
+
+    if mode == "admin":
+        admin_login_page()
+    else:
+        user_app()
