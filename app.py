@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
-# ================= SETUP =================
-st.set_page_config(page_title="WAR ROOM", layout="wide")
+# ================= CONFIG =================
+st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -21,7 +21,7 @@ if "login" not in st.session_state:
 if "refresh" not in st.session_state:
     st.session_state["refresh"] = time.time()
 
-# auto refresh (safe)
+# auto refresh (safe, no plugin)
 if st.session_state["login"]:
     if time.time() - st.session_state["refresh"] > 5:
         st.session_state["refresh"] = time.time()
@@ -65,12 +65,11 @@ def user_app():
 
     task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
-
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
     status = st.selectbox("สถานะ", STATUS)
 
-    problem = st.text_area("ปัญหา")
+    problem = st.text_area("ปัญหา / ข้อขัดข้อง")
 
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
@@ -101,7 +100,7 @@ def user_app():
     st.stop()
 
 # ================= LOGIN =================
-def login():
+def login_page():
 
     st.title("🔐 WAR ROOM LOGIN")
 
@@ -140,7 +139,7 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # summary slide
+    # summary
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "WAR ROOM SUMMARY"
 
@@ -156,7 +155,7 @@ TOTAL: {len(data)}
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # detail
+    # detail slides
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -192,9 +191,9 @@ TOTAL: {len(data)}
     buf.seek(0)
 
     st.download_button(
-        "📥 Download PPT",
+        "📥 Export PPT",
         buf,
-        file_name="war_room_report.pptx"
+        file_name="war_room.pptx"
     )
 
 # ================= ADMIN =================
@@ -215,18 +214,15 @@ def admin_app():
         from_date = st.date_input("From")
         to_date = st.date_input("To")
 
+    # ================= FILTER DATA =================
     raw = get_data()
     data = []
 
     for d in raw:
-
         try:
             dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
 
-            ok_date = from_date <= dt <= to_date
-            ok_unit = (selected_unit == "ทั้งหมด" or d[1] == selected_unit)
-
-            if ok_date and ok_unit:
+            if from_date <= dt <= to_date and (selected_unit == "ทั้งหมด" or d[1] == selected_unit):
                 data.append(d)
 
         except:
@@ -239,7 +235,7 @@ def admin_app():
         st.error(f"🚨 งานค้าง {len(overdue)} รายการ")
 
     # ================= KPI =================
-    st.subheader(f"STATUS: {selected_unit}")
+    st.subheader(f"STATUS DASHBOARD: {selected_unit}")
 
     status_count = {s:0 for s in STATUS}
     unit_count = {}
@@ -265,20 +261,46 @@ def admin_app():
     ax2.bar(status_count.keys(), status_count.values())
     st.pyplot(fig2)
 
-    # ================= UNIT =================
+    # ================= UNIT LOAD =================
     st.subheader("🏢 UNIT LOAD")
 
-    for u,v in sorted(unit_count.items(), key=lambda x: x[1], reverse=True):
+    for u, v in sorted(unit_count.items(), key=lambda x: x[1], reverse=True):
         st.write(f"{u} → {v}")
 
-    # ================= LIST =================
-    st.subheader("📄 LIVE FEED")
+    # ================= LIVE TABLE =================
+    st.subheader("📄 LIVE REPORTS")
 
-    for d in data[:30]:
-        st.write(f"{d[1]} | {d[2]} | {d[5]}")
+    for d in data:
+
+        col1, col2 = st.columns([3,1])
+
+        with col1:
+
+            if d[5] == "ค้าง 🔴":
+                st.error(f"{d[1]} | {d[2]}")
+            elif d[5] == "กำลังดำเนินการ 🟡":
+                st.warning(f"{d[1]} | {d[2]}")
+            else:
+                st.success(f"{d[1]} | {d[2]}")
+
+            st.write(f"📅 {d[8]}")
+            st.write(f"📊 {d[4]}%")
+            st.write(f"🧾 {d[3]}")
+            st.write(f"⚠️ {d[6]}")
+
+            if d[7]:
+                imgs = d[7].split(",")
+                cols = st.columns(min(len(imgs),3))
+
+                for i,img in enumerate(imgs):
+                    if os.path.exists(img):
+                        cols[i%3].image(img, use_container_width=True)
+
+        with col2:
+            st.metric("Progress", f"{d[4]}%")
 
     # ================= EXPORT =================
-    if st.button("📤 EXPORT WAR ROOM PPT"):
+    if st.button("📤 EXPORT PPT"):
         export_ppt(data)
 
 # ================= ROUTER =================
@@ -287,7 +309,7 @@ def main():
     if st.session_state["login"]:
         admin_app()
     else:
-        login()
+        login_page()
         user_app()
 
 main()
