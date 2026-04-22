@@ -17,7 +17,7 @@ ADMIN_PASS = "St006904#"
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
 
-# ================= IMAGE FOLDER =================
+# ================= IMAGE STORAGE =================
 UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -41,11 +41,11 @@ CREATE TABLE IF NOT EXISTS reports (
 conn.commit()
 
 # ================= STATUS STYLE =================
-STATUS_OPTIONS = {
-    "ค้าง 🔴": "red",
-    "กำลังดำเนินการ 🟡": "orange",
-    "เสร็จสิ้น 🟢": "green"
-}
+STATUS_OPTIONS = [
+    "ค้าง 🔴",
+    "กำลังดำเนินการ 🟡",
+    "เสร็จสิ้น 🟢"
+]
 
 # ================= UI CLEAN =================
 st.markdown("""
@@ -74,23 +74,20 @@ def user_app():
 
     progress = st.number_input("ความคืบหน้า (%)", 0, 100, step=1)
 
-    status = st.selectbox("สถานะ", list(STATUS_OPTIONS.keys()))
+    status = st.selectbox("สถานะ", STATUS_OPTIONS)
 
     problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
 
     # ================= IMAGE UPLOAD =================
-    uploaded_files = st.file_uploader(
-        "📷 แนบรูป (ได้หลายรูป)",
-        accept_multiple_files=True
-    )
+    files = st.file_uploader("📷 แนบรูป (หลายรูปได้)", accept_multiple_files=True)
 
     image_paths = []
 
-    if uploaded_files:
-        for file in uploaded_files:
-            file_path = os.path.join(UPLOAD_DIR, file.name)
-            with open(file_path, "wb") as f:
-                f.write(file.getbuffer())
+    if files:
+        for f in files:
+            file_path = os.path.join(UPLOAD_DIR, f.name)
+            with open(file_path, "wb") as out:
+                out.write(f.getbuffer())
             image_paths.append(file_path)
 
     # ================= SUBMIT =================
@@ -129,7 +126,7 @@ def login_page():
             st.error("Login ไม่ถูกต้อง")
 
 # =====================================================
-# 📑 EXPORT PPT (WITH IMAGES)
+# 📑 EXPORT POWERPOINT
 # =====================================================
 def export_ppt(data):
 
@@ -137,7 +134,7 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # SUMMARY
+    # summary
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "Executive Summary"
 
@@ -146,13 +143,13 @@ def export_ppt(data):
         Inches(10), Inches(4)
     ).text = f"จำนวนรายการ: {len(data)}"
 
-    # DETAIL
+    # details
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
         slide.shapes.title.text = d[2]
 
-        txt = f"""
+        text = f"""
 หน่วย: {d[1]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
@@ -164,15 +161,15 @@ def export_ppt(data):
         slide.shapes.add_textbox(
             Inches(0.8), Inches(1.2),
             Inches(6), Inches(4)
-        ).text = txt
+        ).text = text
 
-        # add images
+        # images
         if d[7]:
             imgs = d[7].split(",")
             x = 7
             y = 1.2
 
-            for img in imgs[:2]:  # จำกัด 2 รูปต่อสไลด์
+            for img in imgs[:2]:
                 if os.path.exists(img):
                     slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(2))
                     y += 2
@@ -189,7 +186,7 @@ def export_ppt(data):
     )
 
 # =====================================================
-# 🧠 ADMIN DASHBOARD (REAL-TIME)
+# 🧠 ADMIN DASHBOARD (REAL TIME + EXPORT)
 # =====================================================
 def admin_app():
 
@@ -205,7 +202,7 @@ def admin_app():
 
             st.metric("จำนวนรายงานทั้งหมด", len(data))
 
-            # UNIT CHART
+            # chart
             st.subheader("📌 ภาพรวมรายหน่วย")
 
             unit_map = {}
@@ -214,27 +211,45 @@ def admin_app():
 
             st.bar_chart(unit_map)
 
-            # LATEST
+            # latest
             st.subheader("📄 รายงานล่าสุด")
 
             for d in data[:10]:
 
                 st.write("---")
-
                 st.write("หน่วย:", d[1])
                 st.write("งาน:", d[2])
                 st.write("ความคืบหน้า:", f"{d[4]}%")
-
-                st.write("สถานะ:", d[5])  # มี emoji แล้ว
-
+                st.write("สถานะ:", d[5])
                 st.write("ปัญหา:", d[6])
 
-                # show images
                 if d[7]:
                     imgs = d[7].split(",")
                     for img in imgs[:1]:
                         if os.path.exists(img):
                             st.image(img, width=200)
+
+            # ================= EXPORT =================
+            st.subheader("📑 Export PowerPoint")
+
+            from_date = st.date_input("From")
+            to_date = st.date_input("To")
+
+            filtered = []
+
+            for d in data:
+                try:
+                    t = datetime.datetime.fromisoformat(d[8]).date()
+                    if from_date <= t <= to_date:
+                        filtered.append(d)
+                except:
+                    pass
+
+            st.write(f"📊 รายการในช่วง: {len(filtered)}")
+
+            if st.button("📤 Export PPT"):
+
+                export_ppt(filtered)
 
             st.caption("🔄 อัปเดตอัตโนมัติทุก 3 วินาที")
 
