@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 import os
 import io
+import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -13,6 +14,7 @@ st.set_page_config(page_title="Report System", layout="wide")
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
+# 🔥 SESSION LOGIN (สำคัญ)
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
 
@@ -55,7 +57,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================
-# 👷 USER
+# 👷 USER MODE
 # =====================================================
 def user_app():
 
@@ -73,7 +75,7 @@ def user_app():
     task = st.text_input("งาน/ภารกิจ")
     detail = st.text_area("รายละเอียด")
 
-    progress = st.number_input("ความคืบหน้า (%)", 0, 100, step=1)
+    progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
     status = st.selectbox("สถานะ", STATUS_OPTIONS)
 
@@ -116,7 +118,7 @@ def user_app():
     st.stop()
 
 # =====================================================
-# 🔐 LOGIN
+# 🔐 LOGIN PAGE
 # =====================================================
 def login_page():
 
@@ -134,7 +136,7 @@ def login_page():
             st.error("Login ไม่ถูกต้อง")
 
 # =====================================================
-# 📑 EXPORT PPT (FULL SUMMARY)
+# 📑 EXPORT PPT
 # =====================================================
 def export_ppt(data):
 
@@ -142,7 +144,6 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # ================= วิเคราะห์ =================
     total = len(data)
     units = set([d[1] for d in data])
 
@@ -156,28 +157,44 @@ def export_ppt(data):
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # ================= SLIDE 1 SUMMARY =================
+    # ================= GRAPH =================
+    plt.figure()
+    plt.bar(status_count.keys(), status_count.values())
+    bar_path = "bar.png"
+    plt.savefig(bar_path)
+    plt.close()
+
+    plt.figure()
+    plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
+    pie_path = "pie.png"
+    plt.savefig(pie_path)
+    plt.close()
+
+    # ================= SLIDE 1 =================
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "📊 Executive Summary"
+    slide.shapes.title.text = "📊 Executive Dashboard"
 
-    summary = f"""
-จำนวนรายงานทั้งหมด: {total}
+    text = f"""
+จำนวนรายงาน: {total}
+หน่วย: {len(units)}
 
-หน่วยที่เกี่ยวข้อง:
-{chr(10).join(units)}
-
-📌 สถานะ:
-- ค้าง 🔴 : {status_count['ค้าง 🔴']}
-- กำลังดำเนินการ 🟡 : {status_count['กำลังดำเนินการ 🟡']}
-- เสร็จสิ้น 🟢 : {status_count['เสร็จสิ้น 🟢']}
+🔴 ค้าง: {status_count['ค้าง 🔴']}
+🟡 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
+🟢 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
 """
 
     slide.shapes.add_textbox(
-        Inches(1), Inches(1.5),
-        Inches(11), Inches(5)
-    ).text = summary
+        Inches(0.5), Inches(1),
+        Inches(5), Inches(5)
+    ).text = text
 
-    # ================= DETAIL SLIDES =================
+    if os.path.exists(bar_path):
+        slide.shapes.add_picture(bar_path, Inches(6), Inches(1), width=Inches(3.5))
+
+    if os.path.exists(pie_path):
+        slide.shapes.add_picture(pie_path, Inches(6), Inches(4), width=Inches(3.5))
+
+    # ================= DETAIL =================
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -197,15 +214,13 @@ def export_ppt(data):
             Inches(6), Inches(4)
         ).text = text
 
-        # ================= MULTI IMAGE =================
         if d[7]:
             imgs = d[7].split(",")
-            x = 7
             y = 1.2
 
             for img in imgs:
                 if os.path.exists(img):
-                    slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(2))
+                    slide.shapes.add_picture(img, Inches(7), Inches(y), width=Inches(2))
                     y += 2
 
     output = io.BytesIO()
@@ -213,7 +228,7 @@ def export_ppt(data):
     output.seek(0)
 
     st.download_button(
-        "📥 ดาวน์โหลด PowerPoint",
+        "📥 Export PowerPoint",
         output,
         file_name="report.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -225,6 +240,13 @@ def export_ppt(data):
 def admin_app():
 
     st.title("📊 กกร. Command Center")
+
+    # 🔥 LOGOUT (สำคัญ)
+    with st.sidebar:
+        st.title("🔐 Admin")
+        if st.button("🚪 Logout"):
+            st.session_state.admin_login = False
+            st.rerun()
 
     data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
@@ -242,24 +264,20 @@ def admin_app():
         st.write("สถานะ:", d[5])
         st.write("ปัญหา:", d[6])
 
-        # ================= MULTI IMAGE =================
         if d[7]:
             imgs = d[7].split(",")
-
             cols = st.columns(3)
 
             for i, img in enumerate(imgs):
                 if os.path.exists(img):
                     cols[i % 3].image(img, use_container_width=True)
 
-    st.subheader("📑 Export PowerPoint")
-
     if st.button("📤 Export PPT"):
 
         export_ppt(data)
 
 # =====================================================
-# 🔥 ROUTER
+# 🔥 ROUTER (FIX SESSION LOGIN)
 # =====================================================
 if st.session_state.admin_login:
     admin_app()
