@@ -9,18 +9,18 @@ from pptx.util import Inches
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
 
-# ================= ADMIN LOGIN =================
+# ================= ADMIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
 
-# ================= UPLOAD PATH =================
+# ================= UPLOAD =================
 UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ================= DATABASE =================
+# ================= DB =================
 conn = sqlite3.connect("reports.db", check_same_thread=False)
 c = conn.cursor()
 
@@ -47,7 +47,7 @@ STATUS_OPTIONS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= CLEAN UI =================
+# ================= UI =================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none;}
@@ -55,7 +55,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================
-# 👷 USER MODE
+# 👷 USER
 # =====================================================
 def user_app():
 
@@ -79,8 +79,7 @@ def user_app():
 
     problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
 
-    # ================= IMAGE =================
-    files = st.file_uploader("📷 แนบรูป", accept_multiple_files=True)
+    files = st.file_uploader("📷 แนบรูป (หลายภาพ)", accept_multiple_files=True)
 
     image_paths = []
 
@@ -135,7 +134,7 @@ def login_page():
             st.error("Login ไม่ถูกต้อง")
 
 # =====================================================
-# 📑 EXPORT PPT
+# 📑 EXPORT PPT (FULL SUMMARY)
 # =====================================================
 def export_ppt(data):
 
@@ -143,24 +142,50 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # SUMMARY
+    # ================= วิเคราะห์ =================
+    total = len(data)
+    units = set([d[1] for d in data])
+
+    status_count = {
+        "ค้าง 🔴": 0,
+        "กำลังดำเนินการ 🟡": 0,
+        "เสร็จสิ้น 🟢": 0
+    }
+
+    for d in data:
+        if d[5] in status_count:
+            status_count[d[5]] += 1
+
+    # ================= SLIDE 1 SUMMARY =================
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "Executive Summary"
+    slide.shapes.title.text = "📊 Executive Summary"
+
+    summary = f"""
+จำนวนรายงานทั้งหมด: {total}
+
+หน่วยที่เกี่ยวข้อง:
+{chr(10).join(units)}
+
+📌 สถานะ:
+- ค้าง 🔴 : {status_count['ค้าง 🔴']}
+- กำลังดำเนินการ 🟡 : {status_count['กำลังดำเนินการ 🟡']}
+- เสร็จสิ้น 🟢 : {status_count['เสร็จสิ้น 🟢']}
+"""
 
     slide.shapes.add_textbox(
         Inches(1), Inches(1.5),
-        Inches(10), Inches(4)
-    ).text = f"จำนวนรายการ: {len(data)}"
+        Inches(11), Inches(5)
+    ).text = summary
 
-    # DETAILS
+    # ================= DETAIL SLIDES =================
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = d[2]
+        slide.shapes.title.text = f"{d[1]} - {d[2]}"
 
         text = f"""
 หน่วย: {d[1]}
-วันที่รายงาน: {d[8]}
+วันที่: {d[8]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
 สถานะ: {d[5]}
@@ -172,12 +197,13 @@ def export_ppt(data):
             Inches(6), Inches(4)
         ).text = text
 
+        # ================= MULTI IMAGE =================
         if d[7]:
             imgs = d[7].split(",")
             x = 7
             y = 1.2
 
-            for img in imgs[:2]:
+            for img in imgs:
                 if os.path.exists(img):
                     slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(2))
                     y += 2
@@ -194,38 +220,16 @@ def export_ppt(data):
     )
 
 # =====================================================
-# 🧠 ADMIN DASHBOARD (DEBUG VERSION)
+# 🧠 ADMIN DASHBOARD
 # =====================================================
 def admin_app():
 
     st.title("📊 กกร. Command Center")
 
-    # ================= DEBUG STORAGE =================
-    st.subheader("📁 ตรวจสอบโฟลเดอร์รูป (DEBUG)")
-
-    st.write("UPLOAD_DIR:", UPLOAD_DIR)
-
-    try:
-        files = os.listdir(UPLOAD_DIR)
-        st.write("FILES:", files)
-    except Exception as e:
-        st.error(f"Error reading folder: {e}")
-
-    # ================= DATA =================
     data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
-    st.metric("จำนวนรายงานทั้งหมด", len(data))
+    st.metric("จำนวนรายงาน", len(data))
 
-    # ================= CHART =================
-    st.subheader("📌 ภาพรวมรายหน่วย")
-
-    unit_map = {}
-    for d in data:
-        unit_map[d[1]] = unit_map.get(d[1], 0) + 1
-
-    st.bar_chart(unit_map)
-
-    # ================= LATEST =================
     st.subheader("📄 รายงานล่าสุด")
 
     for d in data[:10]:
@@ -238,38 +242,21 @@ def admin_app():
         st.write("สถานะ:", d[5])
         st.write("ปัญหา:", d[6])
 
+        # ================= MULTI IMAGE =================
         if d[7]:
             imgs = d[7].split(",")
-            for img in imgs[:1]:
+
+            cols = st.columns(3)
+
+            for i, img in enumerate(imgs):
                 if os.path.exists(img):
-                    st.image(img, width=200)
+                    cols[i % 3].image(img, use_container_width=True)
 
-    # ================= EXPORT =================
     st.subheader("📑 Export PowerPoint")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        from_date = st.date_input("From", key="from")
-
-    with col2:
-        to_date = st.date_input("To", key="to")
-
-    filtered = []
-
-    for d in data:
-        try:
-            t = datetime.datetime.fromisoformat(d[8]).date()
-            if from_date <= t <= to_date:
-                filtered.append(d)
-        except:
-            pass
-
-    st.write(f"📊 รายการในช่วง: {len(filtered)}")
 
     if st.button("📤 Export PPT"):
 
-        export_ppt(filtered)
+        export_ppt(data)
 
 # =====================================================
 # 🔥 ROUTER
