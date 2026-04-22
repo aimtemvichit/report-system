@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
-# ================= CONFIG =================
-st.set_page_config(page_title="WAR ROOM", layout="wide")
+# ================= SETUP =================
+st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -55,10 +55,14 @@ STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡"
 
 UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
 
-# ================= DELETE =================
+# ================= DELETE FUNCTION =================
 def delete_report(report_id):
     c.execute("DELETE FROM reports WHERE id = ?", (report_id,))
     conn.commit()
+
+# ================= DATA =================
+def get_data():
+    return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
 # ================= USER =================
 def user_app():
@@ -119,10 +123,6 @@ def login_page():
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# ================= DATA =================
-def get_data():
-    return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
-
 # ================= EXPORT =================
 def export_ppt(data):
 
@@ -133,7 +133,6 @@ def export_ppt(data):
     for d in data:
         status_count[d[5]] += 1
 
-    # chart
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     plt.savefig("bar.png")
@@ -144,7 +143,6 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # summary
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "WAR ROOM SUMMARY"
 
@@ -160,7 +158,6 @@ TOTAL: {len(data)}
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # details
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -207,20 +204,21 @@ def admin_app():
             st.session_state["login"] = False
             st.rerun()
 
-        selected_unit = st.selectbox("หน่วย", UNITS)
+        unit_filter = st.selectbox("หน่วย", UNITS)
 
         from_date = st.date_input("From")
         to_date = st.date_input("To")
 
-    # ================= FILTER =================
+    # ================= ALWAYS FRESH DATA =================
     raw = get_data()
     data = []
 
     for d in raw:
+
         try:
             dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
 
-            if from_date <= dt <= to_date and (selected_unit == "ทั้งหมด" or d[1] == selected_unit):
+            if from_date <= dt <= to_date and (unit_filter == "ทั้งหมด" or d[1] == unit_filter):
                 data.append(d)
 
         except:
@@ -228,7 +226,7 @@ def admin_app():
 
     # ================= ALERT =================
     if any(d[5] == "ค้าง 🔴" for d in data):
-        st.error("🚨 มีงานค้าง!")
+        st.error("🚨 มีงานค้างในระบบ")
 
     # ================= KPI =================
     status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
@@ -242,12 +240,14 @@ def admin_app():
     c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
     c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
-    # ================= TABLE + DELETE =================
+    # ================= LIVE REPORT + DELETE FIX =================
     st.subheader("📄 LIVE REPORTS")
+
+    data = get_data()   # 🔥 FIX สำคัญ: reload ทุกครั้ง
 
     for d in data:
 
-        col1,col2 = st.columns([3,1])
+        col1, col2 = st.columns([3,1])
 
         with col1:
 
@@ -260,6 +260,7 @@ def admin_app():
             if d[7]:
                 imgs = d[7].split(",")
                 cols = st.columns(min(len(imgs),3))
+
                 for i,img in enumerate(imgs):
                     if os.path.exists(img):
                         cols[i%3].image(img, use_container_width=True)
@@ -268,8 +269,9 @@ def admin_app():
 
             st.metric("Progress", f"{d[4]}%")
 
-            if st.button(f"🗑 ลบ", key=f"del_{d[0]}"):
+            if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete_report(d[0])
+                st.success("ลบแล้ว")
                 st.rerun()
 
     # ================= EXPORT =================
