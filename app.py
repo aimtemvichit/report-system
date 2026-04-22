@@ -35,8 +35,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ================= ADMIN LOGIN =================
-ADMIN_USER = "kgr"
-ADMIN_PASS = "1234"
+ADMIN_USER = "adminst06"
+ADMIN_PASS = "st006904"
 
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
