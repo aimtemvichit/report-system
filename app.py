@@ -3,21 +3,20 @@ import sqlite3
 import datetime
 import os
 import io
-from streamlit_autorefresh import st_autorefresh
 from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
 
-# ================= ADMIN =================
+# ================= ADMIN LOGIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
 if "admin_login" not in st.session_state:
     st.session_state.admin_login = False
 
-# ================= IMAGE FOLDER =================
+# ================= UPLOAD PATH =================
 UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -92,7 +91,6 @@ def user_app():
                 out.write(f.getbuffer())
             image_paths.append(path)
 
-    # ================= SAVE =================
     if st.button("📤 ส่งรายงาน"):
 
         c.execute("""
@@ -154,7 +152,7 @@ def export_ppt(data):
         Inches(10), Inches(4)
     ).text = f"จำนวนรายการ: {len(data)}"
 
-    # DETAIL
+    # DETAILS
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -196,23 +194,29 @@ def export_ppt(data):
     )
 
 # =====================================================
-# 🧠 ADMIN DASHBOARD (REAL-TIME FIXED)
+# 🧠 ADMIN DASHBOARD (DEBUG VERSION)
 # =====================================================
 def admin_app():
 
-    # ✅ REAL-TIME FIX (ถูกต้อง)
-    st_autorefresh(interval=3000, key="refresh")
-
     st.title("📊 กกร. Command Center")
 
-        st.write(UPLOAD_DIR)
-        st.write(os.listdir(UPLOAD_DIR))
+    # ================= DEBUG STORAGE =================
+    st.subheader("📁 ตรวจสอบโฟลเดอร์รูป (DEBUG)")
 
+    st.write("UPLOAD_DIR:", UPLOAD_DIR)
+
+    try:
+        files = os.listdir(UPLOAD_DIR)
+        st.write("FILES:", files)
+    except Exception as e:
+        st.error(f"Error reading folder: {e}")
+
+    # ================= DATA =================
     data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
     st.metric("จำนวนรายงานทั้งหมด", len(data))
 
-    # ================= UNIT CHART =================
+    # ================= CHART =================
     st.subheader("📌 ภาพรวมรายหน่วย")
 
     unit_map = {}
