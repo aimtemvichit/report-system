@@ -3,28 +3,36 @@ import sqlite3
 import datetime
 import os
 import io
+import time
 import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
-st.set_page_config(page_title="Report System", layout="wide")
+st.set_page_config(page_title="Command Center", layout="wide")
 
-# ================= AUTO REFRESH (SAFE METHOD) =================
-st.experimental_set_query_params(t=str(datetime.datetime.now()))
+# ================= SESSION =================
+if "admin_login" not in st.session_state:
+    st.session_state["admin_login"] = False
+
+# ================= REAL-TIME SAFE REFRESH =================
+if "last_refresh" not in st.session_state:
+    st.session_state["last_refresh"] = time.time()
+
+if st.session_state["admin_login"]:
+    if time.time() - st.session_state["last_refresh"] > 5:
+        st.session_state["last_refresh"] = time.time()
+        st.rerun()
 
 # ================= ADMIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
-if "admin_login" not in st.session_state:
-    st.session_state["admin_login"] = False
-
 # ================= UPLOAD =================
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ================= DB =================
+# ================= DATABASE =================
 conn = sqlite3.connect("reports.db", check_same_thread=False)
 c = conn.cursor()
 
@@ -44,7 +52,7 @@ CREATE TABLE IF NOT EXISTS reports (
 """)
 conn.commit()
 
-STATUS_OPTIONS = [
+STATUS = [
     "ค้าง 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
@@ -69,20 +77,20 @@ def user_app():
 
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
-    status = st.selectbox("สถานะ", STATUS_OPTIONS)
+    status = st.selectbox("สถานะ", STATUS)
 
     problem = st.text_area("ปัญหา / ข้อขัดข้อง")
 
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
-    image_paths = []
+    images = []
 
     if files:
         for f in files:
             path = os.path.join(UPLOAD_DIR, f.name)
             with open(path, "wb") as out:
                 out.write(f.getbuffer())
-            image_paths.append(path)
+            images.append(path)
 
     if st.button("ส่งรายงาน"):
 
@@ -93,13 +101,9 @@ def user_app():
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            unit,
-            task,
-            detail,
-            progress,
-            status,
-            problem,
-            ",".join(image_paths),
+            unit, task, detail, progress,
+            status, problem,
+            ",".join(images),
             str(report_date),
             str(datetime.datetime.now())
         ))
@@ -127,9 +131,7 @@ def login_page():
 
 # ================= DATA =================
 def get_data():
-
-    data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
-    return data
+    return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
 # ================= EXPORT PPT =================
 def export_ppt(data):
@@ -138,19 +140,12 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    total = len(data)
-
-    status_count = {
-        "ค้าง 🔴": 0,
-        "กำลังดำเนินการ 🟡": 0,
-        "เสร็จสิ้น 🟢": 0
-    }
+    status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
 
     for d in data:
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # chart
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     bar = "bar.png"
@@ -163,19 +158,17 @@ def export_ppt(data):
     plt.savefig(pie)
     plt.close()
 
-    # slide 1
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "📊 Dashboard Summary"
+    slide.shapes.title.text = "📊 Summary"
 
     text = f"""
-จำนวนทั้งหมด: {total}
-
-🔴 {status_count['ค้าง 🔴']}
-🟡 {status_count['กำลังดำเนินการ 🟡']}
-🟢 {status_count['เสร็จสิ้น 🟢']}
+ทั้งหมด: {len(data)}
+ค้าง: {status_count['ค้าง 🔴']}
+กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
+เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
 """
 
-    slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(5), Inches(5)).text = text
+    slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), Inches(4)).text = text
 
     if os.path.exists(bar):
         slide.shapes.add_picture(bar, Inches(6), Inches(1), width=Inches(3.5))
@@ -183,13 +176,12 @@ def export_ppt(data):
     if os.path.exists(pie):
         slide.shapes.add_picture(pie, Inches(6), Inches(4), width=Inches(3.5))
 
-    # details
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
         slide.shapes.title.text = f"{d[1]} - {d[2]}"
 
-        text = f"""
+        txt = f"""
 หน่วย: {d[1]}
 วันที่: {d[8]}
 รายละเอียด: {d[3]}
@@ -198,7 +190,7 @@ def export_ppt(data):
 ปัญหา: {d[6]}
 """
 
-        slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), Inches(4)).text = text
+        slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), Inches(4)).text = txt
 
     output = io.BytesIO()
     prs.save(output)
@@ -214,9 +206,8 @@ def export_ppt(data):
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("📊 กกร. Command Center (Live)")
+    st.title("📊 Command Center (Real-Time)")
 
-    # 🔥 LOGOUT
     with st.sidebar:
         st.title("Admin")
         if st.button("🚪 Logout"):
@@ -227,26 +218,20 @@ def admin_app():
 
     st.metric("จำนวนรายงาน", len(data))
 
-    st.subheader("📄 รายงานล่าสุด")
-
     for d in data[:20]:
-
         st.write("---")
         st.write("หน่วย:", d[1])
         st.write("วันที่:", d[8])
-        st.write("งาน:", d[2])
         st.write("สถานะ:", d[5])
 
         if d[7]:
             imgs = d[7].split(",")
             cols = st.columns(3)
-
-            for i, img in enumerate(imgs):
+            for i,img in enumerate(imgs):
                 if os.path.exists(img):
-                    cols[i % 3].image(img, use_container_width=True)
+                    cols[i%3].image(img, use_container_width=True)
 
     if st.button("📤 Export PPT"):
-
         export_ppt(data)
 
 # ================= ROUTER =================
