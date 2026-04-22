@@ -67,7 +67,7 @@ def get_data():
 # ================= USER =================
 def user_app():
 
-    st.title("📌 UNIT REPORT SYSTEM")
+    st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("หน่วย", UNITS[1:])
     report_date = st.date_input("วันที่รายงาน")
@@ -111,7 +111,7 @@ def user_app():
 # ================= LOGIN =================
 def login_page():
 
-    st.title("🔐 WAR ROOM LOGIN")
+    st.title("🔐 ADMIN LOGIN")
 
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
@@ -196,7 +196,7 @@ TOTAL: {len(data)}
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 WAR ROOM COMMAND CENTER")
+    st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
 
     with st.sidebar:
 
