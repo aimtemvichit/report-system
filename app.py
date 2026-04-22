@@ -110,7 +110,6 @@ def admin_app():
 
     st.title("📊 กกร. Command Center (Real-Time)")
 
-    data = c.session_state = None  # กัน cache
     data = c.execute("SELECT * FROM reports").fetchall()
 
     # ================= SUMMARY =================
