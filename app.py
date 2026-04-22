@@ -35,19 +35,20 @@ CREATE TABLE IF NOT EXISTS reports (
     status TEXT,
     problem TEXT,
     images TEXT,
+    report_date TEXT,
     time TEXT
 )
 """)
 conn.commit()
 
-# ================= STATUS STYLE =================
+# ================= STATUS =================
 STATUS_OPTIONS = [
     "ค้าง 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= UI CLEAN =================
+# ================= CLEAN UI =================
 st.markdown("""
 <style>
 [data-testid="stSidebar"] {display: none;}
@@ -69,6 +70,9 @@ def user_app():
         "กรม ทย.รอ.อย."
     ])
 
+    # ================= REPORT DATE =================
+    report_date = st.date_input("📅 วันที่รายงาน")
+
     task = st.text_input("งาน/ภารกิจ")
     detail = st.text_area("รายละเอียด")
 
@@ -78,27 +82,36 @@ def user_app():
 
     problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
 
-    # ================= IMAGE UPLOAD =================
+    # ================= IMAGES =================
     files = st.file_uploader("📷 แนบรูป (หลายรูปได้)", accept_multiple_files=True)
 
     image_paths = []
 
     if files:
         for f in files:
-            file_path = os.path.join(UPLOAD_DIR, f.name)
-            with open(file_path, "wb") as out:
+            path = os.path.join(UPLOAD_DIR, f.name)
+            with open(path, "wb") as out:
                 out.write(f.getbuffer())
-            image_paths.append(file_path)
+            image_paths.append(path)
 
     # ================= SUBMIT =================
     if st.button("📤 ส่งรายงาน"):
 
         c.execute("""
-            INSERT INTO reports (unit, task, detail, progress, status, problem, images, time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO reports (
+                unit, task, detail, progress,
+                status, problem, images, report_date, time
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            unit, task, detail, progress, status, problem,
+            unit,
+            task,
+            detail,
+            progress,
+            status,
+            problem,
             ",".join(image_paths),
+            str(report_date),
             str(datetime.datetime.now())
         ))
 
@@ -126,7 +139,7 @@ def login_page():
             st.error("Login ไม่ถูกต้อง")
 
 # =====================================================
-# 📑 EXPORT POWERPOINT
+# 📑 EXPORT PPT
 # =====================================================
 def export_ppt(data):
 
@@ -134,7 +147,7 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # summary
+    # SUMMARY
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "Executive Summary"
 
@@ -143,7 +156,7 @@ def export_ppt(data):
         Inches(10), Inches(4)
     ).text = f"จำนวนรายการ: {len(data)}"
 
-    # details
+    # DETAILS
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -151,11 +164,11 @@ def export_ppt(data):
 
         text = f"""
 หน่วย: {d[1]}
+วันที่รายงาน: {d[8]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
 สถานะ: {d[5]}
 ปัญหา: {d[6]}
-เวลา: {d[8]}
 """
 
         slide.shapes.add_textbox(
@@ -163,7 +176,7 @@ def export_ppt(data):
             Inches(6), Inches(4)
         ).text = text
 
-        # images
+        # IMAGES
         if d[7]:
             imgs = d[7].split(",")
             x = 7
@@ -186,74 +199,73 @@ def export_ppt(data):
     )
 
 # =====================================================
-# 🧠 ADMIN DASHBOARD (REAL TIME + EXPORT)
+# 🧠 ADMIN DASHBOARD (REAL TIME FIXED)
 # =====================================================
 def admin_app():
 
-    st.title("📊 กกร. Command Center (Real-Time)")
+    st.title("📊 กกร. Command Center")
 
-    placeholder = st.empty()
+    # auto refresh (FIX REAL-TIME)
+    st_autorefresh = st.experimental_rerun
 
-    while True:
+    data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
 
-        with placeholder.container():
+    st.metric("จำนวนรายงานทั้งหมด", len(data))
 
-            data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+    # ================= CHART =================
+    st.subheader("📌 ภาพรวมรายหน่วย")
 
-            st.metric("จำนวนรายงานทั้งหมด", len(data))
+    unit_map = {}
+    for d in data:
+        unit_map[d[1]] = unit_map.get(d[1], 0) + 1
 
-            # chart
-            st.subheader("📌 ภาพรวมรายหน่วย")
+    st.bar_chart(unit_map)
 
-            unit_map = {}
-            for d in data:
-                unit_map[d[1]] = unit_map.get(d[1], 0) + 1
+    # ================= LATEST =================
+    st.subheader("📄 รายงานล่าสุด")
 
-            st.bar_chart(unit_map)
+    for d in data[:10]:
 
-            # latest
-            st.subheader("📄 รายงานล่าสุด")
+        st.write("---")
+        st.write("หน่วย:", d[1])
+        st.write("วันที่:", d[8])
+        st.write("งาน:", d[2])
+        st.write("ความคืบหน้า:", f"{d[4]}%")
+        st.write("สถานะ:", d[5])
+        st.write("ปัญหา:", d[6])
 
-            for d in data[:10]:
+        if d[7]:
+            imgs = d[7].split(",")
+            for img in imgs[:1]:
+                if os.path.exists(img):
+                    st.image(img, width=200)
 
-                st.write("---")
-                st.write("หน่วย:", d[1])
-                st.write("งาน:", d[2])
-                st.write("ความคืบหน้า:", f"{d[4]}%")
-                st.write("สถานะ:", d[5])
-                st.write("ปัญหา:", d[6])
+    # ================= EXPORT =================
+    st.subheader("📑 Export PowerPoint")
 
-                if d[7]:
-                    imgs = d[7].split(",")
-                    for img in imgs[:1]:
-                        if os.path.exists(img):
-                            st.image(img, width=200)
+    col1, col2 = st.columns(2)
 
-            # ================= EXPORT =================
-            st.subheader("📑 Export PowerPoint")
+    with col1:
+        from_date = st.date_input("From", key="from")
 
-            from_date = st.date_input("From")
-            to_date = st.date_input("To")
+    with col2:
+        to_date = st.date_input("To", key="to")
 
-            filtered = []
+    filtered = []
 
-            for d in data:
-                try:
-                    t = datetime.datetime.fromisoformat(d[8]).date()
-                    if from_date <= t <= to_date:
-                        filtered.append(d)
-                except:
-                    pass
+    for d in data:
+        try:
+            t = datetime.datetime.fromisoformat(d[8]).date()
+            if from_date <= t <= to_date:
+                filtered.append(d)
+        except:
+            pass
 
-            st.write(f"📊 รายการในช่วง: {len(filtered)}")
+    st.write(f"📊 รายการในช่วง: {len(filtered)}")
 
-            if st.button("📤 Export PPT"):
+    if st.button("📤 Export PPT"):
 
-                export_ppt(filtered)
-
-            st.caption("🔄 อัปเดตอัตโนมัติทุก 3 วินาที")
-
-        time.sleep(3)
+        export_ppt(filtered)
 
 # =====================================================
 # 🔥 ROUTER
