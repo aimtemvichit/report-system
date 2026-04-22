@@ -10,13 +10,16 @@ from pptx.util import Inches
 # ================= CONFIG =================
 st.set_page_config(page_title="Report System", layout="wide")
 
+# ================= REAL-TIME =================
+st.autorefresh(interval=5000, key="refresh")
+
 # ================= ADMIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
-# 🔥 SESSION LOGIN (สำคัญ)
+# ================= SESSION =================
 if "admin_login" not in st.session_state:
-    st.session_state.admin_login = False
+    st.session_state["admin_login"] = False
 
 # ================= UPLOAD =================
 UPLOAD_DIR = r"C:\Users\WICHIT_AIMTEM\OneDrive\เดสก์ท็อป\report-system\uploads"
@@ -42,23 +45,13 @@ CREATE TABLE IF NOT EXISTS reports (
 """)
 conn.commit()
 
-# ================= STATUS =================
 STATUS_OPTIONS = [
     "ค้าง 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= UI =================
-st.markdown("""
-<style>
-[data-testid="stSidebar"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
-
-# =====================================================
-# 👷 USER MODE
-# =====================================================
+# ================= USER =================
 def user_app():
 
     st.title("📌 ระบบรายงานหน่วย")
@@ -72,16 +65,16 @@ def user_app():
 
     report_date = st.date_input("📅 วันที่รายงาน")
 
-    task = st.text_input("งาน/ภารกิจ")
+    task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
 
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
 
     status = st.selectbox("สถานะ", STATUS_OPTIONS)
 
-    problem = st.text_area("⚠️ ปัญหา / ข้อขัดข้อง")
+    problem = st.text_area("ปัญหา / ข้อขัดข้อง")
 
-    files = st.file_uploader("📷 แนบรูป (หลายภาพ)", accept_multiple_files=True)
+    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
     image_paths = []
 
@@ -92,7 +85,7 @@ def user_app():
                 out.write(f.getbuffer())
             image_paths.append(path)
 
-    if st.button("📤 ส่งรายงาน"):
+    if st.button("ส่งรายงาน"):
 
         c.execute("""
             INSERT INTO reports (
@@ -113,13 +106,11 @@ def user_app():
         ))
 
         conn.commit()
-        st.success("ส่งรายงานสำเร็จ")
+        st.success("ส่งสำเร็จ")
 
     st.stop()
 
-# =====================================================
-# 🔐 LOGIN PAGE
-# =====================================================
+# ================= LOGIN =================
 def login_page():
 
     st.title("🔐 กกร. Login")
@@ -130,14 +121,34 @@ def login_page():
     if st.button("Login"):
 
         if u == ADMIN_USER and p == ADMIN_PASS:
-            st.session_state.admin_login = True
+            st.session_state["admin_login"] = True
             st.rerun()
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# =====================================================
-# 📑 EXPORT PPT
-# =====================================================
+# ================= FILTER =================
+def get_data():
+
+    st.sidebar.header("📅 Filter")
+
+    from_date = st.sidebar.date_input("From")
+    to_date = st.sidebar.date_input("To")
+
+    data = c.execute("SELECT * FROM reports").fetchall()
+
+    filtered = []
+
+    for d in data:
+        try:
+            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+            if from_date <= d_date <= to_date:
+                filtered.append(d)
+        except:
+            pass
+
+    return filtered
+
+# ================= EXPORT PPT =================
 def export_ppt(data):
 
     prs = Presentation()
@@ -145,7 +156,6 @@ def export_ppt(data):
     prs.slide_height = Inches(7.5)
 
     total = len(data)
-    units = set([d[1] for d in data])
 
     status_count = {
         "ค้าง 🔴": 0,
@@ -157,44 +167,40 @@ def export_ppt(data):
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # ================= GRAPH =================
+    # CHART
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
-    bar_path = "bar.png"
-    plt.savefig(bar_path)
+    bar = "bar.png"
+    plt.savefig(bar)
     plt.close()
 
     plt.figure()
     plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    pie_path = "pie.png"
-    plt.savefig(pie_path)
+    pie = "pie.png"
+    plt.savefig(pie)
     plt.close()
 
-    # ================= SLIDE 1 =================
+    # SLIDE 1
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "📊 Executive Dashboard"
+    slide.shapes.title.text = "📊 Dashboard Summary"
 
     text = f"""
-จำนวนรายงาน: {total}
-หน่วย: {len(units)}
+จำนวนทั้งหมด: {total}
 
-🔴 ค้าง: {status_count['ค้าง 🔴']}
-🟡 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
-🟢 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
+🔴 {status_count['ค้าง 🔴']}
+🟡 {status_count['กำลังดำเนินการ 🟡']}
+🟢 {status_count['เสร็จสิ้น 🟢']}
 """
 
-    slide.shapes.add_textbox(
-        Inches(0.5), Inches(1),
-        Inches(5), Inches(5)
-    ).text = text
+    slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(5), Inches(5)).text = text
 
-    if os.path.exists(bar_path):
-        slide.shapes.add_picture(bar_path, Inches(6), Inches(1), width=Inches(3.5))
+    if os.path.exists(bar):
+        slide.shapes.add_picture(bar, Inches(6), Inches(1), width=Inches(3.5))
 
-    if os.path.exists(pie_path):
-        slide.shapes.add_picture(pie_path, Inches(6), Inches(4), width=Inches(3.5))
+    if os.path.exists(pie):
+        slide.shapes.add_picture(pie, Inches(6), Inches(4), width=Inches(3.5))
 
-    # ================= DETAIL =================
+    # DETAILS
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -209,60 +215,47 @@ def export_ppt(data):
 ปัญหา: {d[6]}
 """
 
-        slide.shapes.add_textbox(
-            Inches(0.8), Inches(1.2),
-            Inches(6), Inches(4)
-        ).text = text
-
-        if d[7]:
-            imgs = d[7].split(",")
-            y = 1.2
-
-            for img in imgs:
-                if os.path.exists(img):
-                    slide.shapes.add_picture(img, Inches(7), Inches(y), width=Inches(2))
-                    y += 2
+        slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(6), Inches(4)).text = text
 
     output = io.BytesIO()
     prs.save(output)
     output.seek(0)
 
     st.download_button(
-        "📥 Export PowerPoint",
+        "📥 Export PPT",
         output,
         file_name="report.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
 
-# =====================================================
-# 🧠 ADMIN DASHBOARD
-# =====================================================
+# ================= ADMIN =================
 def admin_app():
 
-    st.title("📊 กกร. Command Center")
+    st.title("📊 กกร. Command Center (Real-Time)")
 
-    # 🔥 LOGOUT (สำคัญ)
+    # 🔥 LOGOUT BUTTON (ครบแล้ว)
     with st.sidebar:
-        st.title("🔐 Admin")
+        st.title("🔐 Admin Panel")
+
+        st.success("สถานะ: Logged in")
+
         if st.button("🚪 Logout"):
-            st.session_state.admin_login = False
+            st.session_state["admin_login"] = False
             st.rerun()
 
-    data = c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
+    data = get_data()
 
     st.metric("จำนวนรายงาน", len(data))
 
-    st.subheader("📄 รายงานล่าสุด")
+    st.subheader("📄 รายงาน Real-Time")
 
-    for d in data[:10]:
+    for d in data:
 
         st.write("---")
         st.write("หน่วย:", d[1])
         st.write("วันที่:", d[8])
         st.write("งาน:", d[2])
-        st.write("ความคืบหน้า:", f"{d[4]}%")
         st.write("สถานะ:", d[5])
-        st.write("ปัญหา:", d[6])
 
         if d[7]:
             imgs = d[7].split(",")
@@ -276,11 +269,16 @@ def admin_app():
 
         export_ppt(data)
 
-# =====================================================
-# 🔥 ROUTER (FIX SESSION LOGIN)
-# =====================================================
-if st.session_state.admin_login:
-    admin_app()
-else:
-    login_page()
-    user_app()
+# ================= ROUTER =================
+def main():
+
+    if "admin_login" not in st.session_state:
+        st.session_state["admin_login"] = False
+
+    if st.session_state["admin_login"]:
+        admin_app()
+    else:
+        login_page()
+        user_app()
+
+main()
