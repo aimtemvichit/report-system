@@ -19,8 +19,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(DB_DIR, exist_ok=True)
 
 # ================= LOGIN =================
-ADMIN_USER = "admin"
-ADMIN_PASS = "admin123"
+ADMIN_USER = "admin06"
+ADMIN_PASS = "St006904#"
 
 if "login" not in st.session_state:
     st.session_state["login"] = False
