@@ -35,14 +35,13 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (FIX KPI BUG) =================
+# ================= NORMALIZE =================
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
 
     s = str(s)
 
-    # 🔥 ต้องเช็คอันนี้ก่อน
     if "ยังไม่ดำเนิน" in s:
         return "ยังไม่ดำเนินการ 🔴"
 
@@ -220,7 +219,7 @@ def admin_app():
 
         filtered.append(d)
 
-    # KPI
+    # ================= KPI =================
     st.subheader("📊 KPI")
 
     status_list = [norm(x[5]) for x in filtered]
@@ -238,7 +237,44 @@ def admin_app():
 
     st.markdown("---")
 
-    # REPORT
+    # ================= PROGRESS SUMMARY =================
+    st.subheader("📈 ความคืบหน้ารวม")
+
+    if len(filtered) > 0:
+
+        avg_progress = sum([d[4] for d in filtered]) / len(filtered)
+        st.metric("📊 ความคืบหน้าเฉลี่ย (%)", f"{avg_progress:.2f}%")
+
+        progress_by_unit = {}
+        for d in filtered:
+            progress_by_unit.setdefault(d[1], []).append(d[4])
+
+        avg_unit = {u: sum(v)/len(v) for u, v in progress_by_unit.items()}
+
+        df_progress = pd.DataFrame({
+            "หน่วย": list(avg_unit.keys()),
+            "ความคืบหน้าเฉลี่ย": list(avg_unit.values())
+        })
+
+        st.bar_chart(df_progress.set_index("หน่วย"))
+
+        status_count = {
+            "ยังไม่ดำเนินการ 🔴": status_list.count("ยังไม่ดำเนินการ 🔴"),
+            "กำลังดำเนินการ 🟡": status_list.count("กำลังดำเนินการ 🟡"),
+            "เสร็จสิ้น 🟢": status_list.count("เสร็จสิ้น 🟢")
+        }
+
+        fig, ax = plt.subplots()
+        ax.pie(status_count.values(), labels=status_count.keys(), autopct='%1.1f%%')
+        ax.set_title("สถานะงาน")
+        st.pyplot(fig)
+
+    else:
+        st.warning("ยังไม่มีข้อมูล")
+
+    st.markdown("---")
+
+    # ================= REPORT =================
     st.subheader("📄 รายงาน")
 
     for d in filtered:
@@ -268,7 +304,7 @@ def admin_app():
                 delete(d[1], d[0])
                 st.rerun()
 
-    # EXPORT
+    # ================= EXPORT =================
     st.markdown("---")
     st.subheader("📤 EXPORT")
 
@@ -281,7 +317,7 @@ def admin_app():
             file_name="STAFF6_REPORT.pptx"
         )
 
-    # DATABASE VIEW
+    # ================= DATABASE VIEW =================
     st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
