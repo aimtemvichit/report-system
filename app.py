@@ -33,12 +33,22 @@ UNITS = [
     "กรม ทย.รอ.อย."
 ]
 
-# 🔴 UPDATED STATUS
+# ================= STATUS STANDARD =================
 STATUS = [
     "ยังไม่ดำเนินการ 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
 ]
+
+# ================= NORMALIZE (กันสถานะหาย) =================
+def normalize_status(s):
+    if not s:
+        return "ยังไม่ดำเนินการ 🔴"
+    if "ดำเนิน" in s:
+        return "กำลังดำเนินการ 🟡"
+    if "เสร็จ" in s:
+        return "เสร็จสิ้น 🟢"
+    return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
 def safe_unit(unit):
@@ -102,6 +112,8 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
+        status = normalize_status(status)
+
         c.execute("""
         INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -125,7 +137,15 @@ def load_all():
     for u in UNITS:
         conn, c = connect_db(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
-        data.extend(rows)
+
+        # normalize ทุก record กันหาย
+        fixed = []
+        for r in rows:
+            r = list(r)
+            r[5] = normalize_status(r[5])
+            fixed.append(r)
+
+        data.extend(fixed)
 
     return data
 
@@ -135,7 +155,7 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPT (16:9) =================
+# ================= EXPORT PPTX 16:9 =================
 def export_ppt(data):
 
     prs = Presentation()
@@ -151,8 +171,8 @@ def export_ppt(data):
     }
 
     for d in data:
-        if d[5] in status_count:
-            status_count[d[5]] += 1
+        d[5] = normalize_status(d[5])
+        status_count[d[5]] += 1
 
     # GRAPH
     plt.figure()
@@ -168,7 +188,7 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # SUMMARY SLIDE
+    # SUMMARY
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "COMMAND CENTER SUMMARY"
 
@@ -177,14 +197,14 @@ def export_ppt(data):
     ).text = f"""
 TOTAL: {len(data)}
 🔴 ยังไม่ดำเนินการ: {status_count['ยังไม่ดำเนินการ 🔴']}
-🟡 ดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
-🟢 เสร็จ: {status_count['เสร็จสิ้น 🟢']}
+🟡 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
+🟢 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
 """
 
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # DETAIL SLIDES
+    # DETAIL
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -195,7 +215,7 @@ TOTAL: {len(data)}
 งาน: {d[2]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
-สถานะ: {d[5]}
+สถานะ: {normalize_status(d[5])}
 ปัญหา: {d[6]}
 วันที่: {d[8]}
 """
@@ -261,12 +281,12 @@ def admin_app():
     st.subheader("📊 KPI")
 
     total = len(filtered)
-    done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
+    done = len([x for x in filtered if normalize_status(x[5]) == "เสร็จสิ้น 🟢"])
 
     c1, c2, c3 = st.columns(3)
     c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🟢 เสร็จ", done)
-    c3.metric("🔴 ยังไม่ดำเนินการ", total - done)
+    c2.metric("🟡 กำลังดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "กำลังดำเนินการ 🟡"]))
+    c3.metric("🔴 ยังไม่ดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "ยังไม่ดำเนินการ 🔴"]))
 
     st.markdown("---")
 
@@ -278,7 +298,7 @@ def admin_app():
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            st.write(f"**🏷 {d[1]} | {d[2]} | {d[5]}**")
+            st.write(f"**🏷 {d[1]} | {d[2]} | {normalize_status(d[5])}**")
             st.write(d[3])
             st.write("📅", d[8])
 
@@ -326,7 +346,7 @@ def login_page():
     p = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if u == ADMIN_USER and p == ADMIN_PASS:
+        if u == "admin06" and p == "St006904#":
             st.session_state["login"] = True
             st.rerun()
         else:
