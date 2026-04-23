@@ -219,7 +219,7 @@ def admin_app():
 
         filtered.append(d)
 
-    # ================= KPI =================
+    # KPI
     st.subheader("📊 KPI")
 
     status_list = [norm(x[5]) for x in filtered]
@@ -237,7 +237,7 @@ def admin_app():
 
     st.markdown("---")
 
-    # ================= PROGRESS SUMMARY =================
+    # PROGRESS
     st.subheader("📈 ความคืบหน้ารวม")
 
     if len(filtered) > 0:
@@ -258,15 +258,12 @@ def admin_app():
 
         st.bar_chart(df_progress.set_index("หน่วย"))
 
-        status_count = {
-            "ยังไม่ดำเนินการ 🔴": status_list.count("ยังไม่ดำเนินการ 🔴"),
-            "กำลังดำเนินการ 🟡": status_list.count("กำลังดำเนินการ 🟡"),
-            "เสร็จสิ้น 🟢": status_list.count("เสร็จสิ้น 🟢")
-        }
-
         fig, ax = plt.subplots()
-        ax.pie(status_count.values(), labels=status_count.keys(), autopct='%1.1f%%')
-        ax.set_title("สถานะงาน")
+        ax.pie(
+            [todo, doing, done],
+            labels=["🔴 ยังไม่ดำเนินการ", "🟡 กำลังดำเนินการ", "🟢 เสร็จสิ้น"],
+            autopct='%1.1f%%'
+        )
         st.pyplot(fig)
 
     else:
@@ -274,10 +271,10 @@ def admin_app():
 
     st.markdown("---")
 
-    # ================= REPORT =================
+    # REPORT
     st.subheader("📄 รายงาน")
 
-    for d in filtered:
+    for i, d in enumerate(filtered):   # 🔥 FIX KEY DUPLICATE
 
         col1, col2 = st.columns([3, 1])
 
@@ -295,16 +292,16 @@ def admin_app():
                 imgs = d[7].split(",")
                 cols = st.columns(min(len(imgs), 3))
 
-                for i, img in enumerate(imgs):
+                for j, img in enumerate(imgs):
                     if os.path.exists(img):
-                        cols[i % 3].image(img, use_container_width=True)
+                        cols[j % 3].image(img, use_container_width=True)
 
         with col2:
-            if st.button("🗑 ลบ", key=f"del_{d[0]}"):
+            if st.button("🗑 ลบ", key=f"del_{i}_{d[0]}_{d[1]}"):  # 🔥 FIX
                 delete(d[1], d[0])
                 st.rerun()
 
-    # ================= EXPORT =================
+    # EXPORT
     st.markdown("---")
     st.subheader("📤 EXPORT")
 
@@ -317,7 +314,7 @@ def admin_app():
             file_name="STAFF6_REPORT.pptx"
         )
 
-    # ================= DATABASE VIEW =================
+    # DATABASE VIEW
     st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
