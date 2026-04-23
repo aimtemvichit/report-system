@@ -96,7 +96,6 @@ def connect(unit):
 
 # ================= EXPORT =================
 def export_ppt(data):
-
     prs = Presentation()
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
@@ -134,7 +133,6 @@ TOTAL: {len(data)}
 
 # ================= USER =================
 def user_app():
-
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("เลือกหน่วย", UNITS)
@@ -151,7 +149,6 @@ def user_app():
     files = st.file_uploader("📸 แนบรูป", accept_multiple_files=True)
 
     images = []
-
     if files:
         for f in files:
             name = f"{time.time()}_{f.name}"
@@ -162,7 +159,7 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # บันทึก history
+        # history
         c.execute("""
         INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -173,7 +170,7 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # update งานหลัก
+        # update latest
         existing = c.execute("""
         SELECT id, progress FROM reports
         WHERE unit=? AND task=?
@@ -198,7 +195,6 @@ def user_app():
                 str(datetime.datetime.now()),
                 rid
             ))
-
         else:
             c.execute("""
             INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
@@ -249,19 +245,34 @@ def admin_app():
 
     st.title("🚨 STAFF6 COMMAND CENTER")
 
+    history = load_history()
+    latest = load_latest()
+
+    # 🔥 auto date range
+    all_dates = []
+    for d in history:
+        try:
+            all_dates.append(datetime.datetime.strptime(d[8], "%Y-%m-%d").date())
+        except:
+            pass
+
+    if all_dates:
+        min_date = min(all_dates)
+        max_date = max(all_dates)
+    else:
+        min_date = datetime.date.today()
+        max_date = datetime.date.today()
+
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
         unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("From", datetime.date.today())
-        to_date = st.date_input("To", datetime.date.today())
+        from_date = st.date_input("From", min_date)
+        to_date = st.date_input("To", max_date)
 
-    history = load_history()
-    latest = load_latest()
-
-    # filter history
+    # filter
     filtered = []
     for d in history:
         try:
@@ -279,10 +290,9 @@ def admin_app():
 
     # KPI
     st.subheader("📊 KPI")
-
     status_list = [norm(x[5]) for x in latest]
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
     c1.metric("📦 ทั้งหมด", len(latest))
     c2.metric("🟡 กำลังดำเนินการ", status_list.count("กำลังดำเนินการ 🟡"))
     c3.metric("🟢 เสร็จสิ้น", status_list.count("เสร็จสิ้น 🟢"))
@@ -292,16 +302,14 @@ def admin_app():
 
     # PROGRESS
     st.subheader("📈 ความคืบหน้ารวม")
-
-    if len(latest) > 0:
+    if latest:
         avg = sum([d[4] for d in latest]) / len(latest)
-        st.metric("📊 ค่าเฉลี่ย (%)", f"{avg:.2f}%")
+        st.metric("ค่าเฉลี่ย (%)", f"{avg:.2f}%")
 
         df = pd.DataFrame(latest, columns=[
             "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
             "ปัญหา","รูป","วันที่","เวลา"
         ])
-
         st.bar_chart(df.groupby("หน่วย")["%"].mean())
 
     st.markdown("---")
@@ -310,16 +318,20 @@ def admin_app():
     st.subheader("📄 รายงานรายวัน")
 
     for i, d in enumerate(filtered):
-
-        col1, col2 = st.columns([3,1])
+        col1,col2 = st.columns([3,1])
 
         with col1:
             st.markdown(f"""
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
-📄 {d[3]}  
+
+🧾 รายละเอียด  
+{d[3]}
+
 📊 {d[4]}%  
-⚠️ {d[6]}  
-📅 {d[8]}
+⚠️ {d[6] if d[6] else "-"}
+
+📅 {d[8]}  
+🕒 {d[9]}
 """)
 
             if d[7]:
