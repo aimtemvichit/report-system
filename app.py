@@ -27,7 +27,7 @@ if st.session_state["login"]:
         st.session_state["refresh"] = time.time()
         st.rerun()
 
-# ================= DATABASE =================
+# ================= DB =================
 conn = sqlite3.connect("reports.db", check_same_thread=False)
 c = conn.cursor()
 
@@ -209,7 +209,6 @@ def admin_app():
         from_date = st.date_input("From")
         to_date = st.date_input("To")
 
-    # ================= FILTER DATA (FIXED) =================
     raw = get_data()
 
     data = []
@@ -221,17 +220,11 @@ def admin_app():
 
             if from_date <= dt <= to_date:
 
-                if unit_filter == "ทั้งหมด":
-                    data.append(d)
-                elif d[1] == unit_filter:
+                if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
                     data.append(d)
 
         except:
             pass
-
-    # ================= ALERT =================
-    if any(d[5] == "ค้าง 🔴" for d in data):
-        st.error("🚨 มีงานค้างในระบบ")
 
     # ================= KPI =================
     status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
@@ -245,22 +238,18 @@ def admin_app():
     c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
     c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
 
-    # ================= LIVE REPORTS =================
-    st.subheader("📄 LIVE REPORTS (FILTERED BY UNIT)")
+    st.markdown("---")
+
+    # ================= LIVE REPORT =================
+    st.subheader("📄 LIVE REPORTS")
 
     for d in data:
 
-        col1, col2 = st.columns([3,1])
+        col1,col2 = st.columns([3,1])
 
         with col1:
 
-            if d[5] == "ค้าง 🔴":
-                st.error(f"{d[1]} | {d[2]}")
-            elif d[5] == "กำลังดำเนินการ 🟡":
-                st.warning(f"{d[1]} | {d[2]}")
-            else:
-                st.success(f"{d[1]} | {d[2]}")
-
+            st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
             st.write(f"📅 {d[8]}")
             st.write(f"📊 {d[4]}%")
             st.write(f"🧾 {d[3]}")
@@ -287,6 +276,15 @@ def admin_app():
 
     if st.button("📤 EXPORT PPT"):
         export_ppt(data)
+
+    # ================= DATABASE VIEW =================
+    st.markdown("---")
+    st.subheader("🧠 DATABASE VIEW (RAW DATA)")
+
+    if st.checkbox("📊 เปิดดูข้อมูลดิบทั้งหมด"):
+
+        raw_all = get_data()
+        st.write(raw_all)
 
 # ================= ROUTER =================
 def main():
