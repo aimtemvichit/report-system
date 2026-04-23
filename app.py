@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import os
 import datetime
+import time
 import pandas as pd
 
 # ================= CONFIG =================
@@ -20,7 +21,7 @@ ADMIN_PASS = "St006904#"
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
-# ================= UNIT (ใช้ “มีจุด” ได้เต็มที่) =================
+# ================= UNIT (มีจุดได้) =================
 UNITS = [
     "พล.1 รอ.",
     "พล.ร.2 รอ.",
@@ -30,16 +31,17 @@ UNITS = [
 
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
-# ================= แปลงชื่อหน่วยเป็น folder =================
+# ================= SAFE NAME =================
 def safe_unit(unit):
     return unit.replace(" ", "_").replace(".", "")
 
+# ================= DB PATH =================
 def get_db_path(unit):
     folder = os.path.join(DB_DIR, safe_unit(unit))
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-# ================= DB =================
+# ================= DB CONNECT =================
 def connect_db(unit):
     conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
     c = conn.cursor()
@@ -77,6 +79,22 @@ def user_app():
     status = st.selectbox("สถานะ", STATUS)
     problem = st.text_area("ปัญหา")
 
+    # ================= 📸 UPLOAD =================
+    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
+
+    images = []
+
+    if files:
+        for f in files:
+            filename = f"{time.time()}_{f.name}"
+            path = os.path.join(UPLOAD_DIR, filename)
+
+            with open(path, "wb") as w:
+                w.write(f.getbuffer())
+
+            images.append(path)
+
+    # ================= SAVE =================
     if st.button("ส่งรายงาน"):
 
         c.execute("""
@@ -84,7 +102,7 @@ def user_app():
         """, (
             unit, task, detail, progress,
             status, problem,
-            "",
+            ",".join(images),
             str(datetime.date.today()),
             str(datetime.datetime.now())
         ))
@@ -115,7 +133,7 @@ def delete(unit, rid):
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 COMMAND CENTER")
+    st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
 
     data = load_all()
 
@@ -127,29 +145,36 @@ def admin_app():
         if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
             filtered.append(d)
 
-    # KPI
+    # ================= KPI =================
     st.subheader("📊 KPI")
 
     total = len(filtered)
     done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
 
-    c1,c2 = st.columns(2)
+    c1, c2 = st.columns(2)
     c1.metric("ทั้งหมด", total)
     c2.metric("เสร็จสิ้น", done)
 
     st.markdown("---")
 
-    # REPORT
+    # ================= REPORT =================
     st.subheader("📄 รายงาน")
 
     for d in filtered:
 
-        col1,col2 = st.columns([3,1])
+        col1, col2 = st.columns([3, 1])
 
         with col1:
             st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
             st.write(d[3])
             st.write("📅", d[8])
+
+            # 📸 SHOW IMAGES
+            if d[7]:
+                imgs = d[7].split(",")
+                for img in imgs:
+                    if os.path.exists(img):
+                        st.image(img, width=250)
 
         with col2:
             if st.button("🗑 ลบ", key=f"del_{d[0]}"):
@@ -158,7 +183,7 @@ def admin_app():
 
     st.markdown("---")
 
-    # RAW DATA
+    # ================= DATABASE VIEW =================
     st.subheader("🧠 DATABASE VIEW")
 
     df = pd.DataFrame(filtered, columns=[
