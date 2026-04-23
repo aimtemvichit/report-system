@@ -2,15 +2,10 @@ import streamlit as st
 import sqlite3
 import os
 import datetime
-import time
-import io
 import pandas as pd
-import matplotlib.pyplot as plt
-from pptx import Presentation
-from pptx.util import Inches
 
 # ================= CONFIG =================
-st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
+st.set_page_config(page_title="COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
 DB_DIR = "database"
@@ -25,19 +20,26 @@ ADMIN_PASS = "St006904#"
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
-# ================= UNIT LIST =================
-UNITS = ["พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+# ================= UNIT (ใช้ “มีจุด” ได้เต็มที่) =================
+UNITS = [
+    "พล.1 รอ.",
+    "พล.ร.2 รอ.",
+    "พล.ม.2 รอ.",
+    "กรม ทย.รอ.อย."
+]
 
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
-# ================= DB PATH =================
+# ================= แปลงชื่อหน่วยเป็น folder =================
+def safe_unit(unit):
+    return unit.replace(" ", "_").replace(".", "")
+
 def get_db_path(unit):
-    safe = unit.replace(" ", "_").replace(".", "")
-    folder = os.path.join(DB_DIR, safe)
+    folder = os.path.join(DB_DIR, safe_unit(unit))
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-# ================= DB CONNECT =================
+# ================= DB =================
 def connect_db(unit):
     conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
     c = conn.cursor()
@@ -56,24 +58,11 @@ def connect_db(unit):
         time TEXT
     )
     """)
+
     conn.commit()
     return conn, c
 
-# ================= LOGIN PAGE =================
-def login_page():
-    st.title("🔐 ADMIN LOGIN")
-
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if u == ADMIN_USER and p == ADMIN_PASS:
-            st.session_state["login"] = True
-            st.rerun()
-        else:
-            st.error("Login ไม่ถูกต้อง")
-
-# ================= USER REPORT =================
+# ================= USER =================
 def user_app():
 
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
@@ -88,18 +77,6 @@ def user_app():
     status = st.selectbox("สถานะ", STATUS)
     problem = st.text_area("ปัญหา")
 
-    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
-
-    images = []
-
-    if files:
-        for f in files:
-            filename = f"{time.time()}_{f.name}"
-            path = os.path.join(UPLOAD_DIR, filename)
-            with open(path, "wb") as w:
-                w.write(f.getbuffer())
-            images.append(path)
-
     if st.button("ส่งรายงาน"):
 
         c.execute("""
@@ -107,7 +84,7 @@ def user_app():
         """, (
             unit, task, detail, progress,
             status, problem,
-            ",".join(images),
+            "",
             str(datetime.date.today()),
             str(datetime.datetime.now())
         ))
@@ -117,17 +94,17 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD ALL DATA =================
-def load_all_data():
+# ================= LOAD ALL =================
+def load_all():
 
-    all_data = []
+    data = []
 
-    for unit in UNITS:
-        conn, c = connect_db(unit)
+    for u in UNITS:
+        conn, c = connect_db(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
-        all_data.extend(rows)
+        data.extend(rows)
 
-    return all_data
+    return data
 
 # ================= DELETE =================
 def delete(unit, rid):
@@ -138,12 +115,11 @@ def delete(unit, rid):
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 COMMAND CENTER (ALL UNITS)")
+    st.title("🚨 COMMAND CENTER")
 
-    data = load_all_data()
+    data = load_all()
 
-    # ===== FILTER =====
-    unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
+    unit_filter = st.selectbox("เลือกหน่วย", ["ทั้งหมด"] + UNITS)
 
     filtered = []
 
@@ -151,22 +127,20 @@ def admin_app():
         if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
             filtered.append(d)
 
-    # ===== KPI =====
+    # KPI
     st.subheader("📊 KPI")
 
     total = len(filtered)
     done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
-    pending = len([x for x in filtered if x[5] != "เสร็จสิ้น 🟢"])
 
-    c1,c2,c3 = st.columns(3)
+    c1,c2 = st.columns(2)
     c1.metric("ทั้งหมด", total)
-    c2.metric("เสร็จ", done)
-    c3.metric("ค้าง", pending)
+    c2.metric("เสร็จสิ้น", done)
 
     st.markdown("---")
 
-    # ===== REPORT =====
-    st.subheader("📄 REPORT")
+    # REPORT
+    st.subheader("📄 รายงาน")
 
     for d in filtered:
 
@@ -177,24 +151,14 @@ def admin_app():
             st.write(d[3])
             st.write("📅", d[8])
 
-            if d[7]:
-                imgs = d[7].split(",")
-                cols = st.columns(min(len(imgs),3))
-
-                for i,img in enumerate(imgs):
-                    if os.path.exists(img):
-                        cols[i].image(img, use_container_width=True)
-
         with col2:
-
-            st.metric("Progress", f"{d[4]}%")
-
-            if st.button("🗑 ลบ", key=f"del_{d[0]}_{d[1]}"):
+            if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete(d[1], d[0])
                 st.rerun()
 
-    # ===== RAW DB =====
     st.markdown("---")
+
+    # RAW DATA
     st.subheader("🧠 DATABASE VIEW")
 
     df = pd.DataFrame(filtered, columns=[
@@ -203,6 +167,21 @@ def admin_app():
     ])
 
     st.dataframe(df, use_container_width=True)
+
+# ================= LOGIN =================
+def login_page():
+
+    st.title("🔐 ADMIN LOGIN")
+
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if u == ADMIN_USER and p == ADMIN_PASS:
+            st.session_state["login"] = True
+            st.rerun()
+        else:
+            st.error("ผิด")
 
 # ================= ROUTER =================
 def main():
