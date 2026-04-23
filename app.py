@@ -33,38 +33,35 @@ UNITS = [
     "กรม ทย.รอ.อย."
 ]
 
-# ================= STATUS FIXED =================
+# ================= STATUS =================
 STATUS = [
     "ยังไม่ดำเนินการ 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (กันหาย 100%) =================
-def normalize_status(s):
+# ================= NORMALIZE (กันพัง 100%) =================
+def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
-
     s = str(s)
-
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
     if "ดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
-
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
-def safe_unit(unit):
-    return unit.replace(" ", "_").replace(".", "")
+def safe_unit(u):
+    return u.replace(" ", "_").replace(".", "")
 
-def get_db_path(unit):
+def db_path(unit):
     folder = os.path.join(DB_DIR, safe_unit(unit))
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-def connect_db(unit):
-    conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
+def connect(unit):
+    conn = sqlite3.connect(db_path(unit), check_same_thread=False)
     c = conn.cursor()
 
     c.execute("""
@@ -91,8 +88,7 @@ def user_app():
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("เลือกหน่วย", UNITS)
-
-    conn, c = connect_db(unit)
+    conn, c = connect(unit)
 
     task = st.text_input("งาน")
     detail = st.text_area("รายละเอียด")
@@ -106,23 +102,19 @@ def user_app():
 
     if files:
         for f in files:
-            filename = f"{time.time()}_{f.name}"
-            path = os.path.join(UPLOAD_DIR, filename)
-
+            name = f"{time.time()}_{f.name}"
+            path = os.path.join(UPLOAD_DIR, name)
             with open(path, "wb") as w:
                 w.write(f.getbuffer())
-
             images.append(path)
 
     if st.button("📤 ส่งรายงาน"):
-
-        status = normalize_status(status)
 
         c.execute("""
         INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
             unit, task, detail, progress,
-            status, problem,
+            norm(status), problem,
             ",".join(images),
             str(datetime.date.today()),
             str(datetime.datetime.now())
@@ -133,19 +125,19 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD ALL (FIX STATUS HERE) =================
+# ================= LOAD ALL =================
 def load_all():
 
     data = []
 
     for u in UNITS:
-        conn, c = connect_db(u)
+        conn, c = connect(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
 
         fixed = []
         for r in rows:
             r = list(r)
-            r[5] = normalize_status(r[5])  # 🔥 FIX 100%
+            r[5] = norm(r[5])
             fixed.append(r)
 
         data.extend(fixed)
@@ -154,7 +146,7 @@ def load_all():
 
 # ================= DELETE =================
 def delete(unit, rid):
-    conn, c = connect_db(unit)
+    conn, c = connect(unit)
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
@@ -162,8 +154,6 @@ def delete(unit, rid):
 def export_ppt(data):
 
     prs = Presentation()
-
-    # 16:9
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
@@ -174,10 +164,8 @@ def export_ppt(data):
     }
 
     for d in data:
-        s = normalize_status(d[5])
-        status_count[s] += 1
+        status_count[norm(d[5])] += 1
 
-    # GRAPH
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     plt.title("STATUS")
@@ -191,7 +179,6 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # SUMMARY
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "COMMAND CENTER SUMMARY"
 
@@ -207,7 +194,6 @@ TOTAL: {len(data)}
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # DETAIL
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -218,7 +204,7 @@ TOTAL: {len(data)}
 งาน: {d[2]}
 รายละเอียด: {d[3]}
 ความคืบหน้า: {d[4]}%
-สถานะ: {normalize_status(d[5])}
+สถานะ: {norm(d[5])}
 ปัญหา: {d[6]}
 วันที่: {d[8]}
 """
@@ -250,32 +236,30 @@ def admin_app():
     st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
 
     with st.sidebar:
+        st.markdown("## CONTROL")
 
-        st.markdown("## 🧭 CONTROL PANEL")
-
-        if st.button("🚪 ออกจากระบบ"):
+        if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
-        unit_filter = st.selectbox("📌 หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("📅 From", datetime.date.today())
-        to_date = st.date_input("📅 To", datetime.date.today())
+        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
+        from_date = st.date_input("From", datetime.date.today())
+        to_date = st.date_input("To", datetime.date.today())
 
     data = load_all()
 
     filtered = []
 
     for d in data:
-
         try:
-            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+            dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
         except:
             continue
 
         if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
             continue
 
-        if not (from_date <= d_date <= to_date):
+        if not (from_date <= dd <= to_date):
             continue
 
         filtered.append(d)
@@ -283,11 +267,13 @@ def admin_app():
     # KPI
     st.subheader("📊 KPI")
 
+    total = len(filtered)
+
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("📦 ทั้งหมด", len(filtered))
-    c2.metric("🟡 กำลังดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "กำลังดำเนินการ 🟡"]))
-    c3.metric("🔴 ยังไม่ดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "ยังไม่ดำเนินการ 🔴"]))
+    c1.metric("📦 ทั้งหมด", total)
+    c2.metric("🟡 กำลังดำเนินการ", len([x for x in filtered if norm(x[5]) == "กำลังดำเนินการ 🟡"]))
+    c3.metric("🔴 ยังไม่ดำเนินการ", len([x for x in filtered if norm(x[5]) == "ยังไม่ดำเนินการ 🔴"]))
 
     st.markdown("---")
 
@@ -299,13 +285,12 @@ def admin_app():
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            st.write(f"**🏷 {d[1]} | {d[2]} | {normalize_status(d[5])}**")
+            st.write(f"**{d[1]} | {d[2]} | {norm(d[5])}**")
             st.write(d[3])
             st.write("📅", d[8])
 
             if d[7]:
-                imgs = d[7].split(",")
-                for img in imgs:
+                for img in d[7].split(","):
                     if os.path.exists(img):
                         st.image(img, width=250)
 
@@ -317,7 +302,7 @@ def admin_app():
     # EXPORT
     st.markdown("---")
 
-    if st.button("📤 EXPORT PPTX (16:9)"):
+    if st.button("📤 EXPORT PPTX 16:9"):
 
         ppt = export_ppt(filtered)
 
