@@ -126,9 +126,13 @@ def user_app():
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("เลือกหน่วย", UNITS)
+
+    # 🔥 เพิ่มเลือกวันที่
+    report_date = st.date_input("📅 วันที่รายงาน", datetime.date.today())
+
     conn, c = connect(unit)
 
-    task = st.text_input("งาน")
+    task = st.text_input("งาน").strip()
     detail = st.text_area("รายละเอียด")
     progress = st.number_input("ความคืบหน้า (%)", 0, 100)
     status = st.selectbox("สถานะ", STATUS)
@@ -148,7 +152,6 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # 🔥 เช็คงานเดิม
         existing = c.execute("""
         SELECT id, progress FROM reports
         WHERE unit=? AND task=?
@@ -181,7 +184,7 @@ def user_app():
                 unit, task, detail, progress,
                 norm(status), problem,
                 ",".join(images),
-                str(datetime.date.today()),
+                str(report_date),
                 str(datetime.datetime.now())
             ))
 
@@ -314,7 +317,7 @@ def admin_app():
     st.markdown("---")
     if st.button("📤 Export PPT"):
         ppt = export_ppt(filtered)
-        st.download_button("📥 ดาวน์โหลด", ppt, file_name="report.pptx")
+        st.download_button("📥 ดาวน์โหลด", ppt, file_name="STAFF6_REPORT.pptx")
 
 # ================= LOGIN =================
 def login_page():
