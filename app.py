@@ -4,6 +4,10 @@ import os
 import datetime
 import time
 import pandas as pd
+import io
+import matplotlib.pyplot as plt
+from pptx import Presentation
+from pptx.util import Inches
 
 # ================= CONFIG =================
 st.set_page_config(page_title="COMMAND CENTER", layout="wide")
@@ -21,7 +25,7 @@ ADMIN_PASS = "St006904#"
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
-# ================= UNIT (มีจุดได้) =================
+# ================= UNIT =================
 UNITS = [
     "พล.1 รอ.",
     "พล.ร.2 รอ.",
@@ -41,7 +45,7 @@ def get_db_path(unit):
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-# ================= DB CONNECT =================
+# ================= CONNECT DB =================
 def connect_db(unit):
     conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
     c = conn.cursor()
@@ -79,7 +83,7 @@ def user_app():
     status = st.selectbox("สถานะ", STATUS)
     problem = st.text_area("ปัญหา")
 
-    # ================= 📸 UPLOAD =================
+    # 📸 upload
     files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
     images = []
@@ -94,7 +98,6 @@ def user_app():
 
             images.append(path)
 
-    # ================= SAVE =================
     if st.button("ส่งรายงาน"):
 
         c.execute("""
@@ -130,6 +133,89 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
+# ================= EXPORT PPT =================
+def export_ppt(data):
+
+    prs = Presentation()
+
+    status_count = {
+        "ค้าง 🔴": 0,
+        "กำลังดำเนินการ 🟡": 0,
+        "เสร็จสิ้น 🟢": 0
+    }
+
+    for d in data:
+        if d[5] in status_count:
+            status_count[d[5]] += 1
+
+    # GRAPH
+    plt.figure()
+    plt.bar(status_count.keys(), status_count.values())
+    plt.title("STATUS")
+    plt.tight_layout()
+    plt.savefig("bar.png")
+    plt.close()
+
+    plt.figure()
+    plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
+    plt.title("STATUS PIE")
+    plt.savefig("pie.png")
+    plt.close()
+
+    # SLIDE 1
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "COMMAND CENTER SUMMARY"
+
+    slide.shapes.add_textbox(
+        Inches(0.5), Inches(1), Inches(6), Inches(3)
+    ).text = f"""
+TOTAL: {len(data)}
+🔴 {status_count['ค้าง 🔴']}
+🟡 {status_count['กำลังดำเนินการ 🟡']}
+🟢 {status_count['เสร็จสิ้น 🟢']}
+"""
+
+    slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
+    slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
+
+    # SLIDE DETAIL
+    for d in data:
+
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.title.text = f"{d[1]} | {d[2]}"
+
+        text = f"""
+หน่วย: {d[1]}
+งาน: {d[2]}
+รายละเอียด: {d[3]}
+ความคืบหน้า: {d[4]}%
+สถานะ: {d[5]}
+ปัญหา: {d[6]}
+วันที่: {d[8]}
+"""
+
+        slide.shapes.add_textbox(
+            Inches(0.5), Inches(0.5), Inches(6), Inches(3)
+        ).text = text
+
+        if d[7]:
+            imgs = d[7].split(",")
+            x, y = 6, 1
+
+            for img in imgs:
+                if os.path.exists(img):
+                    slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(3))
+                    x += 3
+                    if x > 9:
+                        x = 6
+                        y += 2
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+
+    return buf
+
 # ================= ADMIN =================
 def admin_app():
 
@@ -137,13 +223,36 @@ def admin_app():
 
     data = load_all()
 
-    unit_filter = st.selectbox("เลือกหน่วย", ["ทั้งหมด"] + UNITS)
+    # ================= FILTER =================
+    st.subheader("🔎 FILTER")
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
+
+    with c2:
+        from_date = st.date_input("From", datetime.date.today())
+
+    with c3:
+        to_date = st.date_input("To", datetime.date.today())
 
     filtered = []
 
     for d in data:
-        if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
-            filtered.append(d)
+
+        try:
+            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+        except:
+            continue
+
+        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
+            continue
+
+        if not (from_date <= d_date <= to_date):
+            continue
+
+        filtered.append(d)
 
     # ================= KPI =================
     st.subheader("📊 KPI")
@@ -151,14 +260,15 @@ def admin_app():
     total = len(filtered)
     done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     c1.metric("ทั้งหมด", total)
-    c2.metric("เสร็จสิ้น", done)
+    c2.metric("เสร็จ", done)
+    c3.metric("ค้าง", total - done)
 
     st.markdown("---")
 
     # ================= REPORT =================
-    st.subheader("📄 รายงาน")
+    st.subheader("📄 REPORT")
 
     for d in filtered:
 
@@ -169,7 +279,6 @@ def admin_app():
             st.write(d[3])
             st.write("📅", d[8])
 
-            # 📸 SHOW IMAGES
             if d[7]:
                 imgs = d[7].split(",")
                 for img in imgs:
@@ -181,9 +290,21 @@ def admin_app():
                 delete(d[1], d[0])
                 st.rerun()
 
+    # ================= EXPORT =================
     st.markdown("---")
 
-    # ================= DATABASE VIEW =================
+    if st.button("📤 EXPORT PPTX"):
+
+        ppt = export_ppt(filtered)
+
+        st.download_button(
+            "📥 ดาวน์โหลด PPTX",
+            ppt,
+            file_name="COMMAND_CENTER.pptx"
+        )
+
+    # ================= DB VIEW =================
+    st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
     df = pd.DataFrame(filtered, columns=[
