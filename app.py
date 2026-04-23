@@ -35,7 +35,7 @@ UNITS = [
 
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
-# ================= SAFE NAME =================
+# ================= SAFE UNIT =================
 def safe_unit(unit):
     return unit.replace(" ", "_").replace(".", "")
 
@@ -133,10 +133,14 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPT =================
+# ================= EXPORT PPTX (16:9) =================
 def export_ppt(data):
 
     prs = Presentation()
+
+    # 🔥 16:9 SETUP
+    prs.slide_width = Inches(13.33)
+    prs.slide_height = Inches(7.5)
 
     status_count = {
         "ค้าง 🔴": 0,
@@ -148,7 +152,7 @@ def export_ppt(data):
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # GRAPH
+    # ===== GRAPH =====
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     plt.title("STATUS")
@@ -158,11 +162,11 @@ def export_ppt(data):
 
     plt.figure()
     plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    plt.title("STATUS PIE")
+    plt.title("STATUS")
     plt.savefig("pie.png")
     plt.close()
 
-    # SLIDE 1
+    # ===== SLIDE 1 =====
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "COMMAND CENTER SUMMARY"
 
@@ -170,15 +174,15 @@ def export_ppt(data):
         Inches(0.5), Inches(1), Inches(6), Inches(3)
     ).text = f"""
 TOTAL: {len(data)}
-🔴 {status_count['ค้าง 🔴']}
-🟡 {status_count['กำลังดำเนินการ 🟡']}
-🟢 {status_count['เสร็จสิ้น 🟢']}
+🔴 ค้าง: {status_count['ค้าง 🔴']}
+🟡 ดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
+🟢 เสร็จ: {status_count['เสร็จสิ้น 🟢']}
 """
 
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # SLIDE DETAIL
+    # ===== DETAIL SLIDES =====
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -195,7 +199,7 @@ TOTAL: {len(data)}
 """
 
         slide.shapes.add_textbox(
-            Inches(0.5), Inches(0.5), Inches(6), Inches(3)
+            Inches(0.5), Inches(0.5), Inches(6), Inches(4)
         ).text = text
 
         if d[7]:
@@ -293,7 +297,7 @@ def admin_app():
     # ================= EXPORT =================
     st.markdown("---")
 
-    if st.button("📤 EXPORT PPTX"):
+    if st.button("📤 EXPORT PPTX (16:9)"):
 
         ppt = export_ppt(filtered)
 
@@ -327,7 +331,7 @@ def login_page():
             st.session_state["login"] = True
             st.rerun()
         else:
-            st.error("ผิด")
+            st.error("Login ไม่ถูกต้อง")
 
 # ================= ROUTER =================
 def main():
