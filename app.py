@@ -169,7 +169,7 @@ def user_app():
                 norm(status),
                 problem,
                 ",".join(images),
-                str(datetime.date.today()),
+                str(report_date),
                 str(datetime.datetime.now()),
                 rid
             ))
