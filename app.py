@@ -25,7 +25,7 @@ ADMIN_PASS = "St006904#"
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
-# ================= UNIT =================
+# ================= UNITS =================
 UNITS = [
     "พล.1 รอ.",
     "พล.ร.2 รอ.",
@@ -45,7 +45,7 @@ def get_db_path(unit):
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-# ================= CONNECT DB =================
+# ================= DB CONNECT =================
 def connect_db(unit):
     conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
     c = conn.cursor()
@@ -68,7 +68,7 @@ def connect_db(unit):
     conn.commit()
     return conn, c
 
-# ================= USER =================
+# ================= USER PAGE =================
 def user_app():
 
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
@@ -83,8 +83,7 @@ def user_app():
     status = st.selectbox("สถานะ", STATUS)
     problem = st.text_area("ปัญหา")
 
-    # 📸 upload
-    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
+    files = st.file_uploader("📸 แนบรูป", accept_multiple_files=True)
 
     images = []
 
@@ -98,7 +97,7 @@ def user_app():
 
             images.append(path)
 
-    if st.button("ส่งรายงาน"):
+    if st.button("📤 ส่งรายงาน"):
 
         c.execute("""
         INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
@@ -115,7 +114,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD ALL =================
+# ================= LOAD DATA =================
 def load_all():
 
     data = []
@@ -133,12 +132,12 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPTX (16:9) =================
+# ================= EXPORT PPTX 16:9 =================
 def export_ppt(data):
 
     prs = Presentation()
 
-    # 🔥 16:9 SETUP
+    # 🔥 16:9 SET
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
@@ -166,7 +165,7 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # ===== SLIDE 1 =====
+    # ===== SUMMARY SLIDE =====
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "COMMAND CENTER SUMMARY"
 
@@ -225,21 +224,23 @@ def admin_app():
 
     st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
 
+    # ================= SIDEBAR =================
+    with st.sidebar:
+
+        st.markdown("## 🧭 CONTROL PANEL")
+
+        if st.button("🚪 ออกจากระบบ"):
+            st.session_state["login"] = False
+            st.rerun()
+
+        st.markdown("---")
+
+        unit_filter = st.selectbox("📌 หน่วย", ["ทั้งหมด"] + UNITS)
+        from_date = st.date_input("📅 From", datetime.date.today())
+        to_date = st.date_input("📅 To", datetime.date.today())
+
+    # ================= DATA =================
     data = load_all()
-
-    # ================= FILTER =================
-    st.subheader("🔎 FILTER")
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-
-    with c2:
-        from_date = st.date_input("From", datetime.date.today())
-
-    with c3:
-        to_date = st.date_input("To", datetime.date.today())
 
     filtered = []
 
@@ -265,9 +266,9 @@ def admin_app():
     done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("ทั้งหมด", total)
-    c2.metric("เสร็จ", done)
-    c3.metric("ค้าง", total - done)
+    c1.metric("📦 ทั้งหมด", total)
+    c2.metric("🟢 เสร็จ", done)
+    c3.metric("🔴 ค้าง", total - done)
 
     st.markdown("---")
 
@@ -279,9 +280,9 @@ def admin_app():
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
-            st.write(d[3])
-            st.write("📅", d[8])
+            st.write(f"**🏷 {d[1]} | {d[2]} | {d[5]}**")
+            st.write(f"🧾 {d[3]}")
+            st.write(f"📅 {d[8]}")
 
             if d[7]:
                 imgs = d[7].split(",")
