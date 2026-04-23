@@ -257,7 +257,7 @@ def admin_app():
         from_date = st.date_input("From", min_date)
         to_date = st.date_input("To", max_date)
 
-    # filter history
+    # ===== FILTER DATA =====
     filtered_history = []
     for d in history:
         try:
@@ -273,7 +273,6 @@ def admin_app():
 
         filtered_history.append(d)
 
-    # filter latest
     filtered_latest = []
     for d in latest:
         if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
@@ -293,7 +292,7 @@ def admin_app():
 
     st.markdown("---")
 
-    # ===== PROGRESS =====
+    # ===== PROGRESS GRAPH =====
     st.subheader("📈 ความคืบหน้ารวม")
 
     if filtered_latest:
@@ -305,7 +304,11 @@ def admin_app():
             "ปัญหา","รูป","วันที่","เวลา"
         ])
 
-        st.bar_chart(df.groupby("หน่วย")["%"].mean())
+        if unit_filter == "ทั้งหมด":
+            st.bar_chart(df.groupby("หน่วย")["%"].mean())
+        else:
+            df["งาน"] = df["งาน"].str[:25]
+            st.bar_chart(df.groupby("งาน")["%"].mean())
 
     st.markdown("---")
 
