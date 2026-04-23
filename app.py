@@ -39,16 +39,13 @@ STATUS = [
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
-
     s = str(s)
-
     if "ยังไม่ดำเนิน" in s:
         return "ยังไม่ดำเนินการ 🔴"
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
     if "กำลังดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
-
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
@@ -64,8 +61,25 @@ def connect(unit):
     conn = sqlite3.connect(db_path(unit), check_same_thread=False)
     c = conn.cursor()
 
+    # ตารางงานล่าสุด
     c.execute("""
     CREATE TABLE IF NOT EXISTS reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unit TEXT,
+        task TEXT,
+        detail TEXT,
+        progress INTEGER,
+        status TEXT,
+        problem TEXT,
+        images TEXT,
+        report_date TEXT,
+        time TEXT
+    )
+    """)
+
+    # 🔥 ตาราง history
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         unit TEXT,
         task TEXT,
@@ -126,8 +140,6 @@ def user_app():
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("เลือกหน่วย", UNITS)
-
-    # 🔥 เพิ่มเลือกวันที่
     report_date = st.date_input("📅 วันที่รายงาน", datetime.date.today())
 
     conn, c = connect(unit)
@@ -152,6 +164,18 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
+        # 🔥 บันทึก history ทุกครั้ง
+        c.execute("""
+        INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
+        """, (
+            unit, task, detail, progress,
+            norm(status), problem,
+            ",".join(images),
+            str(report_date),
+            str(datetime.datetime.now())
+        ))
+
+        # 🔍 เช็คงานเดิม
         existing = c.execute("""
         SELECT id, progress FROM reports
         WHERE unit=? AND task=?
@@ -189,12 +213,27 @@ def user_app():
             ))
 
         conn.commit()
-        st.success("อัปเดตงานเรียบร้อย")
+        st.success("บันทึก + อัปเดตเรียบร้อย")
 
     st.stop()
 
 # ================= LOAD =================
-def load_all():
+def load_history():
+
+    data = []
+
+    for u in UNITS:
+        conn, c = connect(u)
+        rows = c.execute("SELECT * FROM history").fetchall()
+
+        for r in rows:
+            r = list(r)
+            r[5] = norm(r[5])
+            data.append(r)
+
+    return data
+
+def load_latest():
 
     data = []
 
@@ -229,11 +268,13 @@ def admin_app():
         from_date = st.date_input("From", datetime.date.today())
         to_date = st.date_input("To", datetime.date.today())
 
-    data = load_all()
+    history = load_history()
+    latest = load_latest()
 
+    # ===== FILTER HISTORY =====
     filtered = []
 
-    for d in data:
+    for d in history:
         try:
             dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
         except:
@@ -247,47 +288,21 @@ def admin_app():
 
         filtered.append(d)
 
-    # KPI
+    # ===== KPI ใช้ latest =====
     st.subheader("📊 KPI")
 
-    status_list = [norm(x[5]) for x in filtered]
+    status_list = [norm(x[5]) for x in latest]
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📦 ทั้งหมด", len(filtered))
+    c1.metric("📦 ทั้งหมด", len(latest))
     c2.metric("🟡 กำลังดำเนินการ", status_list.count("กำลังดำเนินการ 🟡"))
     c3.metric("🟢 เสร็จสิ้น", status_list.count("เสร็จสิ้น 🟢"))
     c4.metric("🔴 ยังไม่ดำเนินการ", status_list.count("ยังไม่ดำเนินการ 🔴"))
 
     st.markdown("---")
 
-    # PROGRESS
-    st.subheader("📈 ความคืบหน้ารวม")
-
-    if len(filtered) > 0:
-
-        avg_progress = sum([d[4] for d in filtered]) / len(filtered)
-        st.metric("📊 ความคืบหน้าเฉลี่ย (%)", f"{avg_progress:.2f}%")
-
-        progress_by_unit = {}
-        for d in filtered:
-            progress_by_unit.setdefault(d[1], []).append(d[4])
-
-        avg_unit = {u: sum(v)/len(v) for u, v in progress_by_unit.items()}
-
-        df_progress = pd.DataFrame({
-            "หน่วย": list(avg_unit.keys()),
-            "ความคืบหน้าเฉลี่ย": list(avg_unit.values())
-        })
-
-        st.bar_chart(df_progress.set_index("หน่วย"))
-
-    else:
-        st.warning("ยังไม่มีข้อมูล")
-
-    st.markdown("---")
-
-    # REPORT
-    st.subheader("📄 รายงาน")
+    # ===== REPORT (history) =====
+    st.subheader("📄 รายงานรายวัน")
 
     for i, d in enumerate(filtered):
 
@@ -309,9 +324,7 @@ def admin_app():
                         st.image(img, width=250)
 
         with col2:
-            if st.button("🗑 ลบ", key=f"del_{i}_{d[0]}_{d[1]}"):
-                delete(d[1], d[0])
-                st.rerun()
+            st.write("")
 
     # EXPORT
     st.markdown("---")
