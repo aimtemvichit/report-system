@@ -35,7 +35,6 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE =================
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
@@ -154,7 +153,7 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # history
+        # ===== SAVE HISTORY =====
         c.execute("""
         INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -165,16 +164,21 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # latest update
+        # ===== UPDATE / INSERT MAIN =====
         existing = c.execute("""
-        SELECT id, progress FROM reports
+        SELECT id, progress, images FROM reports
         WHERE unit=? AND task=?
         ORDER BY id DESC LIMIT 1
         """, (unit, task)).fetchone()
 
         if existing:
-            rid, old_progress = existing
+            rid, old_progress, old_images = existing
+
             new_progress = max(old_progress, progress)
+
+            # 🔥 รวมรูปเก่า + ใหม่
+            old_list = old_images.split(",") if old_images else []
+            new_list = old_list + images
 
             c.execute("""
             UPDATE reports
@@ -185,7 +189,7 @@ def user_app():
                 new_progress,
                 norm(status),
                 problem,
-                ",".join(images),
+                ",".join(new_list),
                 str(report_date),
                 str(datetime.datetime.now()),
                 rid
@@ -237,27 +241,16 @@ def admin_app():
     history = load_history()
     latest = load_latest()
 
-    # ===== FILTER =====
-    all_dates = []
-    for d in history:
-        try:
-            all_dates.append(datetime.datetime.strptime(d[8], "%Y-%m-%d").date())
-        except:
-            pass
-
-    min_date = min(all_dates) if all_dates else datetime.date.today()
-    max_date = max(all_dates) if all_dates else datetime.date.today()
-
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
         unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("From", min_date)
-        to_date = st.date_input("To", max_date)
+        from_date = st.date_input("From", datetime.date.today())
+        to_date = st.date_input("To", datetime.date.today())
 
-    # ===== FILTER DATA =====
+    # ===== FILTER =====
     filtered_history = []
     for d in history:
         try:
@@ -292,13 +285,10 @@ def admin_app():
 
     st.markdown("---")
 
-    # ===== PROGRESS GRAPH =====
-    st.subheader("📈 ความคืบหน้ารวม")
+    # ===== GRAPH =====
+    st.subheader("📈 ความคืบหน้า")
 
     if filtered_latest:
-        avg = sum([d[4] for d in filtered_latest]) / len(filtered_latest)
-        st.metric("ค่าเฉลี่ย (%)", f"{avg:.2f}%")
-
         df = pd.DataFrame(filtered_latest, columns=[
             "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
             "ปัญหา","รูป","วันที่","เวลา"
@@ -313,7 +303,7 @@ def admin_app():
     st.markdown("---")
 
     # ===== REPORT =====
-    st.subheader("📄 รายงานรายวัน")
+    st.subheader("📄 รายงาน")
 
     for i, d in enumerate(filtered_history):
 
@@ -323,19 +313,17 @@ def admin_app():
             st.markdown(f"""
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
 
-🧾 รายละเอียด  
 {d[3]}
 
 📊 {d[4]}%  
-⚠️ {d[6] if d[6] else "-"}
-
+⚠️ {d[6] if d[6] else "-"}  
 📅 {d[8]}  
 🕒 {d[9]}
 """)
 
             if d[7]:
                 for img in d[7].split(","):
-                    if os.path.exists(img):
+                    if img and os.path.exists(img):
                         st.image(img, width=250)
 
         with col2:
@@ -354,6 +342,7 @@ def admin_app():
 # ================= LOGIN =================
 def login_page():
     st.title("🔐 STAFF6 LOGIN")
+
     u = st.text_input("User")
     p = st.text_input("Password", type="password")
 
