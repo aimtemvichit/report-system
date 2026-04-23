@@ -1,9 +1,10 @@
 import streamlit as st
 import sqlite3
-import datetime
 import os
-import io
+import datetime
 import time
+import io
+import pandas as pd
 import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
@@ -12,105 +13,54 @@ from pptx.util import Inches
 st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
+DB_DIR = "database"
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(DB_DIR, exist_ok=True)
 
-# ================= SESSION =================
-if "login" not in st.session_state:
-    st.session_state["login"] = False
-
-if "refresh" not in st.session_state:
-    st.session_state["refresh"] = time.time()
-
-# auto refresh
-if st.session_state["login"]:
-    if time.time() - st.session_state["refresh"] > 5:
-        st.session_state["refresh"] = time.time()
-        st.rerun()
-
-# ================= DB =================
-conn = sqlite3.connect("reports.db", check_same_thread=False)
-c = conn.cursor()
-
-c.execute("""
-CREATE TABLE IF NOT EXISTS reports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    unit TEXT,
-    task TEXT,
-    detail TEXT,
-    progress INTEGER,
-    status TEXT,
-    problem TEXT,
-    images TEXT,
-    report_date TEXT,
-    time TEXT
-)
-""")
-conn.commit()
-
-# ================= CONFIG =================
+# ================= LOGIN =================
 ADMIN_USER = "admin06"
 ADMIN_PASS = "St006904#"
 
+if "login" not in st.session_state:
+    st.session_state["login"] = False
+
+# ================= UNIT LIST =================
+UNITS = ["พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+
 STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
 
-UNITS = ["ทั้งหมด", "พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+# ================= DB PATH =================
+def get_db_path(unit):
+    safe = unit.replace(" ", "_").replace(".", "")
+    folder = os.path.join(DB_DIR, safe)
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, "reports.db")
 
-# ================= DELETE =================
-def delete_report(report_id):
-    c.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+# ================= DB CONNECT =================
+def connect_db(unit):
+    conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unit TEXT,
+        task TEXT,
+        detail TEXT,
+        progress INTEGER,
+        status TEXT,
+        problem TEXT,
+        images TEXT,
+        report_date TEXT,
+        time TEXT
+    )
+    """)
     conn.commit()
+    return conn, c
 
-# ================= DATA =================
-def get_data():
-    return c.execute("SELECT * FROM reports ORDER BY id DESC").fetchall()
-
-# ================= USER =================
-def user_app():
-
-    st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
-
-    unit = st.selectbox("หน่วย", UNITS[1:])
-    report_date = st.date_input("วันที่รายงาน")
-
-    task = st.text_input("งาน")
-    detail = st.text_area("รายละเอียด")
-    progress = st.number_input("ความคืบหน้า (%)", 0, 100)
-
-    status = st.selectbox("สถานะ", STATUS)
-
-    problem = st.text_area("ปัญหา")
-
-    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
-
-    images = []
-
-    if files:
-        for f in files:
-            path = os.path.join(UPLOAD_DIR, f"{int(time.time())}_{f.name}")
-            with open(path, "wb") as w:
-                w.write(f.getbuffer())
-            images.append(path)
-
-    if st.button("ส่งรายงาน"):
-
-        c.execute("""
-            INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
-        """, (
-            unit, task, detail, progress,
-            status, problem,
-            ",".join(images),
-            str(report_date),
-            str(datetime.datetime.now())
-        ))
-
-        conn.commit()
-        st.success("ส่งสำเร็จ")
-
-    st.stop()
-
-# ================= LOGIN =================
+# ================= LOGIN PAGE =================
 def login_page():
-
     st.title("🔐 ADMIN LOGIN")
 
     u = st.text_input("Username")
@@ -123,137 +73,109 @@ def login_page():
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# ================= EXPORT PPT =================
-def export_ppt(data):
+# ================= USER REPORT =================
+def user_app():
 
-    prs = Presentation()
+    st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
-    status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
+    unit = st.selectbox("เลือกหน่วย", UNITS)
 
-    for d in data:
-        status_count[d[5]] += 1
+    conn, c = connect_db(unit)
 
-    plt.figure()
-    plt.bar(status_count.keys(), status_count.values())
-    plt.savefig("bar.png")
-    plt.close()
+    task = st.text_input("งาน")
+    detail = st.text_area("รายละเอียด")
+    progress = st.number_input("ความคืบหน้า (%)", 0, 100)
+    status = st.selectbox("สถานะ", STATUS)
+    problem = st.text_area("ปัญหา")
 
-    plt.figure()
-    plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    plt.savefig("pie.png")
-    plt.close()
+    files = st.file_uploader("แนบรูป", accept_multiple_files=True)
 
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "WAR ROOM SUMMARY"
+    images = []
 
-    slide.shapes.add_textbox(
-        Inches(0.5), Inches(1), Inches(6), 3
-    ).text = f"""
-TOTAL: {len(data)}
-🔴 {status_count['ค้าง 🔴']}
-🟡 {status_count['กำลังดำเนินการ 🟡']}
-🟢 {status_count['เสร็จสิ้น 🟢']}
-"""
+    if files:
+        for f in files:
+            filename = f"{time.time()}_{f.name}"
+            path = os.path.join(UPLOAD_DIR, filename)
+            with open(path, "wb") as w:
+                w.write(f.getbuffer())
+            images.append(path)
 
-    slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
-    slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
+    if st.button("ส่งรายงาน"):
 
-    for d in data:
+        c.execute("""
+        INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
+        """, (
+            unit, task, detail, progress,
+            status, problem,
+            ",".join(images),
+            str(datetime.date.today()),
+            str(datetime.datetime.now())
+        ))
 
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = f"{d[1]} | {d[2]}"
+        conn.commit()
+        st.success("ส่งรายงานสำเร็จ")
 
-        text = f"""
-หน่วย: {d[1]}
-รายละเอียด: {d[3]}
-ความคืบหน้า: {d[4]}%
-สถานะ: {d[5]}
-ปัญหา: {d[6]}
-"""
+    st.stop()
 
-        slide.shapes.add_textbox(
-            Inches(0.5), Inches(0.5), Inches(6), 3
-        ).text = text
+# ================= LOAD ALL DATA =================
+def load_all_data():
 
-        if d[7]:
-            imgs = d[7].split(",")
-            x, y = 6, 1
+    all_data = []
 
-            for img in imgs:
-                if os.path.exists(img):
-                    slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(3))
-                    x += 3
-                    if x > 10:
-                        x = 6
-                        y += 2
+    for unit in UNITS:
+        conn, c = connect_db(unit)
+        rows = c.execute("SELECT * FROM reports").fetchall()
+        all_data.extend(rows)
 
-    buf = io.BytesIO()
-    prs.save(buf)
-    buf.seek(0)
+    return all_data
 
-    st.download_button("📥 Export PPT", buf, file_name="war_room.pptx")
+# ================= DELETE =================
+def delete(unit, rid):
+    conn, c = connect_db(unit)
+    c.execute("DELETE FROM reports WHERE id=?", (rid,))
+    conn.commit()
 
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
+    st.title("🚨 COMMAND CENTER (ALL UNITS)")
 
-    with st.sidebar:
+    data = load_all_data()
 
-        if st.button("Logout"):
-            st.session_state["login"] = False
-            st.rerun()
+    # ===== FILTER =====
+    unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
 
-        unit_filter = st.selectbox("หน่วย", UNITS)
-
-        from_date = st.date_input("From")
-        to_date = st.date_input("To")
-
-    raw = get_data()
-
-    data = []
-
-    for d in raw:
-
-        try:
-            dt = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
-
-            if from_date <= dt <= to_date:
-
-                if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
-                    data.append(d)
-
-        except:
-            pass
-
-    # ================= KPI =================
-    status_count = {"ค้าง 🔴":0,"กำลังดำเนินการ 🟡":0,"เสร็จสิ้น 🟢":0}
+    filtered = []
 
     for d in data:
-        status_count[d[5]] += 1
+        if unit_filter == "ทั้งหมด" or d[1] == unit_filter:
+            filtered.append(d)
+
+    # ===== KPI =====
+    st.subheader("📊 KPI")
+
+    total = len(filtered)
+    done = len([x for x in filtered if x[5] == "เสร็จสิ้น 🟢"])
+    pending = len([x for x in filtered if x[5] != "เสร็จสิ้น 🟢"])
 
     c1,c2,c3 = st.columns(3)
-
-    c1.metric("🔴 ค้าง", status_count["ค้าง 🔴"])
-    c2.metric("🟡 ดำเนินการ", status_count["กำลังดำเนินการ 🟡"])
-    c3.metric("🟢 เสร็จ", status_count["เสร็จสิ้น 🟢"])
+    c1.metric("ทั้งหมด", total)
+    c2.metric("เสร็จ", done)
+    c3.metric("ค้าง", pending)
 
     st.markdown("---")
 
-    # ================= LIVE REPORT =================
-    st.subheader("📄 LIVE REPORTS")
+    # ===== REPORT =====
+    st.subheader("📄 REPORT")
 
-    for d in data:
+    for d in filtered:
 
         col1,col2 = st.columns([3,1])
 
         with col1:
-
             st.write(f"**{d[1]} | {d[2]} | {d[5]}**")
-            st.write(f"📅 {d[8]}")
-            st.write(f"📊 {d[4]}%")
-            st.write(f"🧾 {d[3]}")
-            st.write(f"⚠️ {d[6]}")
+            st.write(d[3])
+            st.write("📅", d[8])
 
             if d[7]:
                 imgs = d[7].split(",")
@@ -261,30 +183,26 @@ def admin_app():
 
                 for i,img in enumerate(imgs):
                     if os.path.exists(img):
-                        cols[i%3].image(img, use_container_width=True)
+                        cols[i].image(img, use_container_width=True)
 
         with col2:
 
             st.metric("Progress", f"{d[4]}%")
 
-            if st.button("🗑 ลบ", key=f"del_{d[0]}"):
-                delete_report(d[0])
+            if st.button("🗑 ลบ", key=f"del_{d[0]}_{d[1]}"):
+                delete(d[1], d[0])
                 st.rerun()
 
-    # ================= EXPORT =================
+    # ===== RAW DB =====
     st.markdown("---")
+    st.subheader("🧠 DATABASE VIEW")
 
-    if st.button("📤 EXPORT PPT"):
-        export_ppt(data)
+    df = pd.DataFrame(filtered, columns=[
+        "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
+        "ปัญหา","รูป","วันที่","เวลา"
+    ])
 
-    # ================= DATABASE VIEW =================
-    st.markdown("---")
-    st.subheader("🧠 DATABASE VIEW (RAW DATA)")
-
-    if st.checkbox("📊 เปิดดูข้อมูลดิบทั้งหมด"):
-
-        raw_all = get_data()
-        st.write(raw_all)
+    st.dataframe(df, use_container_width=True)
 
 # ================= ROUTER =================
 def main():
