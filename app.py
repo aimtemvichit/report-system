@@ -10,7 +10,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
-st.set_page_config(page_title="COMMAND CENTER", layout="wide")
+st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
 DB_DIR = "database"
@@ -19,19 +19,14 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(DB_DIR, exist_ok=True)
 
 # ================= LOGIN =================
-ADMIN_USER = "admin06"
-ADMIN_PASS = "St006904#"
+ADMIN_USER = "admin"
+ADMIN_PASS = "admin123"
 
 if "login" not in st.session_state:
     st.session_state["login"] = False
 
 # ================= UNITS =================
-UNITS = [
-    "พล.1 รอ.",
-    "พล.ร.2 รอ.",
-    "พล.ม.2 รอ.",
-    "กรม ทย.รอ.อย."
-]
+UNITS = ["พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
 
 # ================= STATUS =================
 STATUS = [
@@ -40,25 +35,28 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (กันพัง 100%) =================
+# ================= NORMALIZE (กัน KPI พัง 100%) =================
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
+
     s = str(s)
-    if "เสร็จ" in s:
+
+    if "เสร็จ" in s or "done" in s.lower():
         return "เสร็จสิ้น 🟢"
-    if "ดำเนิน" in s:
+    if "ดำเนิน" in s or "progress" in s.lower():
         return "กำลังดำเนินการ 🟡"
+
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
-def safe_unit(u):
+def safe(u):
     return u.replace(" ", "_").replace(".", "")
 
 def db_path(unit):
-    folder = os.path.join(DB_DIR, safe_unit(unit))
+    folder = os.path.join(DB_DIR, safe(unit))
     os.makedirs(folder, exist_ok=True)
-    return os.path.join(folder, "reports.db")
+    return os.path.join(folder, "data.db")
 
 def connect(unit):
     conn = sqlite3.connect(db_path(unit), check_same_thread=False)
@@ -125,7 +123,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD ALL =================
+# ================= LOAD =================
 def load_all():
 
     data = []
@@ -134,13 +132,10 @@ def load_all():
         conn, c = connect(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
 
-        fixed = []
         for r in rows:
             r = list(r)
-            r[5] = norm(r[5])
-            fixed.append(r)
-
-        data.extend(fixed)
+            r[5] = norm(r[5])   # 🔥 FIX KPI ทุก record
+            data.append(r)
 
     return data
 
@@ -150,7 +145,7 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPTX 16:9 =================
+# ================= EXPORT PPT (16:9) =================
 def export_ppt(data):
 
     prs = Presentation()
@@ -166,21 +161,20 @@ def export_ppt(data):
     for d in data:
         status_count[norm(d[5])] += 1
 
+    # GRAPH
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
-    plt.title("STATUS")
     plt.tight_layout()
     plt.savefig("bar.png")
     plt.close()
 
     plt.figure()
     plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    plt.title("STATUS")
     plt.savefig("pie.png")
     plt.close()
 
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "COMMAND CENTER SUMMARY"
+    slide.shapes.title.text = "WAR ROOM SUMMARY"
 
     slide.shapes.add_textbox(
         Inches(0.5), Inches(1), Inches(6), Inches(3)
@@ -213,18 +207,6 @@ TOTAL: {len(data)}
             Inches(0.5), Inches(0.5), Inches(6), Inches(4)
         ).text = text
 
-        if d[7]:
-            imgs = d[7].split(",")
-            x, y = 6, 1
-
-            for img in imgs:
-                if os.path.exists(img):
-                    slide.shapes.add_picture(img, Inches(x), Inches(y), width=Inches(3))
-                    x += 3
-                    if x > 9:
-                        x = 6
-                        y += 2
-
     buf = io.BytesIO()
     prs.save(buf)
     buf.seek(0)
@@ -233,7 +215,7 @@ TOTAL: {len(data)}
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
+    st.title("🚨 WAR ROOM COMMAND CENTER")
 
     with st.sidebar:
         st.markdown("## CONTROL")
@@ -243,44 +225,31 @@ def admin_app():
             st.rerun()
 
         unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("From", datetime.date.today())
-        to_date = st.date_input("To", datetime.date.today())
 
     data = load_all()
 
-    filtered = []
+    if unit_filter != "ทั้งหมด":
+        data = [d for d in data if d[1] == unit_filter]
 
-    for d in data:
-        try:
-            dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
-        except:
-            continue
-
-        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
-            continue
-
-        if not (from_date <= dd <= to_date):
-            continue
-
-        filtered.append(d)
-
-    # KPI
+    # ================= KPI =================
     st.subheader("📊 KPI")
 
-    total = len(filtered)
+    total = len(data)
+    doing = len([x for x in data if norm(x[5]) == "กำลังดำเนินการ 🟡"])
+    done = len([x for x in data if norm(x[5]) == "เสร็จสิ้น 🟢"])
+    todo = len([x for x in data if norm(x[5]) == "ยังไม่ดำเนินการ 🔴"])
 
     c1, c2, c3 = st.columns(3)
-
     c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🟡 กำลังดำเนินการ", len([x for x in filtered if norm(x[5]) == "กำลังดำเนินการ 🟡"]))
-    c3.metric("🔴 ยังไม่ดำเนินการ", len([x for x in filtered if norm(x[5]) == "ยังไม่ดำเนินการ 🔴"]))
+    c2.metric("🟡 กำลังดำเนินการ", doing)
+    c3.metric("🟢 เสร็จสิ้น", done)
 
     st.markdown("---")
 
-    # REPORT
+    # ================= REPORT =================
     st.subheader("📄 REPORT")
 
-    for d in filtered:
+    for d in data:
 
         col1, col2 = st.columns([3, 1])
 
@@ -289,34 +258,29 @@ def admin_app():
             st.write(d[3])
             st.write("📅", d[8])
 
-            if d[7]:
-                for img in d[7].split(","):
-                    if os.path.exists(img):
-                        st.image(img, width=250)
-
         with col2:
             if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete(d[1], d[0])
                 st.rerun()
 
-    # EXPORT
+    # ================= EXPORT =================
     st.markdown("---")
 
     if st.button("📤 EXPORT PPTX 16:9"):
 
-        ppt = export_ppt(filtered)
+        ppt = export_ppt(data)
 
         st.download_button(
-            "📥 ดาวน์โหลด PPTX",
+            "📥 ดาวน์โหลด PPT",
             ppt,
-            file_name="COMMAND_CENTER.pptx"
+            file_name="WAR_ROOM.pptx"
         )
 
-    # DB VIEW
+    # ================= DB VIEW =================
     st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
-    df = pd.DataFrame(filtered, columns=[
+    df = pd.DataFrame(data, columns=[
         "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
         "ปัญหา","รูป","วันที่","เวลา"
     ])
@@ -326,17 +290,17 @@ def admin_app():
 # ================= LOGIN =================
 def login_page():
 
-    st.title("🔐 ADMIN LOGIN")
+    st.title("🔐 LOGIN")
 
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+    u = st.text_input("User")
+    p = st.text_input("Pass", type="password")
 
     if st.button("Login"):
         if u == ADMIN_USER and p == ADMIN_PASS:
             st.session_state["login"] = True
             st.rerun()
         else:
-            st.error("Login ไม่ถูกต้อง")
+            st.error("ไม่ถูกต้อง")
 
 # ================= ROUTER =================
 def main():
