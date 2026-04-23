@@ -33,19 +33,22 @@ UNITS = [
     "กรม ทย.รอ.อย."
 ]
 
-STATUS = ["ค้าง 🔴", "กำลังดำเนินการ 🟡", "เสร็จสิ้น 🟢"]
+# 🔴 UPDATED STATUS
+STATUS = [
+    "ยังไม่ดำเนินการ 🔴",
+    "กำลังดำเนินการ 🟡",
+    "เสร็จสิ้น 🟢"
+]
 
-# ================= SAFE UNIT =================
+# ================= DB =================
 def safe_unit(unit):
     return unit.replace(" ", "_").replace(".", "")
 
-# ================= DB PATH =================
 def get_db_path(unit):
     folder = os.path.join(DB_DIR, safe_unit(unit))
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "reports.db")
 
-# ================= DB CONNECT =================
 def connect_db(unit):
     conn = sqlite3.connect(get_db_path(unit), check_same_thread=False)
     c = conn.cursor()
@@ -68,7 +71,7 @@ def connect_db(unit):
     conn.commit()
     return conn, c
 
-# ================= USER PAGE =================
+# ================= USER =================
 def user_app():
 
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
@@ -114,7 +117,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD DATA =================
+# ================= LOAD =================
 def load_all():
 
     data = []
@@ -132,17 +135,17 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPTX 16:9 =================
+# ================= EXPORT PPT (16:9) =================
 def export_ppt(data):
 
     prs = Presentation()
 
-    # 🔥 16:9 SET
+    # 16:9
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
     status_count = {
-        "ค้าง 🔴": 0,
+        "ยังไม่ดำเนินการ 🔴": 0,
         "กำลังดำเนินการ 🟡": 0,
         "เสร็จสิ้น 🟢": 0
     }
@@ -151,7 +154,7 @@ def export_ppt(data):
         if d[5] in status_count:
             status_count[d[5]] += 1
 
-    # ===== GRAPH =====
+    # GRAPH
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     plt.title("STATUS")
@@ -165,7 +168,7 @@ def export_ppt(data):
     plt.savefig("pie.png")
     plt.close()
 
-    # ===== SUMMARY SLIDE =====
+    # SUMMARY SLIDE
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "COMMAND CENTER SUMMARY"
 
@@ -173,7 +176,7 @@ def export_ppt(data):
         Inches(0.5), Inches(1), Inches(6), Inches(3)
     ).text = f"""
 TOTAL: {len(data)}
-🔴 ค้าง: {status_count['ค้าง 🔴']}
+🔴 ยังไม่ดำเนินการ: {status_count['ยังไม่ดำเนินการ 🔴']}
 🟡 ดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
 🟢 เสร็จ: {status_count['เสร็จสิ้น 🟢']}
 """
@@ -181,7 +184,7 @@ TOTAL: {len(data)}
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
 
-    # ===== DETAIL SLIDES =====
+    # DETAIL SLIDES
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -216,7 +219,6 @@ TOTAL: {len(data)}
     buf = io.BytesIO()
     prs.save(buf)
     buf.seek(0)
-
     return buf
 
 # ================= ADMIN =================
@@ -224,7 +226,6 @@ def admin_app():
 
     st.title("🚨 กกร.ฉก.ทม.รอ.904 COMMAND CENTER")
 
-    # ================= SIDEBAR =================
     with st.sidebar:
 
         st.markdown("## 🧭 CONTROL PANEL")
@@ -233,13 +234,10 @@ def admin_app():
             st.session_state["login"] = False
             st.rerun()
 
-        st.markdown("---")
-
         unit_filter = st.selectbox("📌 หน่วย", ["ทั้งหมด"] + UNITS)
         from_date = st.date_input("📅 From", datetime.date.today())
         to_date = st.date_input("📅 To", datetime.date.today())
 
-    # ================= DATA =================
     data = load_all()
 
     filtered = []
@@ -259,7 +257,7 @@ def admin_app():
 
         filtered.append(d)
 
-    # ================= KPI =================
+    # KPI
     st.subheader("📊 KPI")
 
     total = len(filtered)
@@ -268,11 +266,11 @@ def admin_app():
     c1, c2, c3 = st.columns(3)
     c1.metric("📦 ทั้งหมด", total)
     c2.metric("🟢 เสร็จ", done)
-    c3.metric("🔴 ค้าง", total - done)
+    c3.metric("🔴 ยังไม่ดำเนินการ", total - done)
 
     st.markdown("---")
 
-    # ================= REPORT =================
+    # REPORT
     st.subheader("📄 REPORT")
 
     for d in filtered:
@@ -281,8 +279,8 @@ def admin_app():
 
         with col1:
             st.write(f"**🏷 {d[1]} | {d[2]} | {d[5]}**")
-            st.write(f"🧾 {d[3]}")
-            st.write(f"📅 {d[8]}")
+            st.write(d[3])
+            st.write("📅", d[8])
 
             if d[7]:
                 imgs = d[7].split(",")
@@ -295,7 +293,7 @@ def admin_app():
                 delete(d[1], d[0])
                 st.rerun()
 
-    # ================= EXPORT =================
+    # EXPORT
     st.markdown("---")
 
     if st.button("📤 EXPORT PPTX (16:9)"):
@@ -308,7 +306,7 @@ def admin_app():
             file_name="COMMAND_CENTER.pptx"
         )
 
-    # ================= DB VIEW =================
+    # DB VIEW
     st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
