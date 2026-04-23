@@ -44,10 +44,8 @@ def norm(s):
 
     if "ยังไม่ดำเนิน" in s:
         return "ยังไม่ดำเนินการ 🔴"
-
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
-
     if "กำลังดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
 
@@ -150,18 +148,45 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        c.execute("""
-        INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
-        """, (
-            unit, task, detail, progress,
-            norm(status), problem,
-            ",".join(images),
-            str(datetime.date.today()),
-            str(datetime.datetime.now())
-        ))
+        # 🔥 เช็คงานเดิม
+        existing = c.execute("""
+        SELECT id, progress FROM reports
+        WHERE unit=? AND task=?
+        ORDER BY id DESC LIMIT 1
+        """, (unit, task)).fetchone()
+
+        if existing:
+            rid, old_progress = existing
+            new_progress = max(old_progress, progress)
+
+            c.execute("""
+            UPDATE reports
+            SET detail=?, progress=?, status=?, problem=?, images=?, report_date=?, time=?
+            WHERE id=?
+            """, (
+                detail,
+                new_progress,
+                norm(status),
+                problem,
+                ",".join(images),
+                str(datetime.date.today()),
+                str(datetime.datetime.now()),
+                rid
+            ))
+
+        else:
+            c.execute("""
+            INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
+            """, (
+                unit, task, detail, progress,
+                norm(status), problem,
+                ",".join(images),
+                str(datetime.date.today()),
+                str(datetime.datetime.now())
+            ))
 
         conn.commit()
-        st.success("ส่งรายงานสำเร็จ")
+        st.success("อัปเดตงานเรียบร้อย")
 
     st.stop()
 
@@ -224,16 +249,11 @@ def admin_app():
 
     status_list = [norm(x[5]) for x in filtered]
 
-    total = len(status_list)
-    doing = status_list.count("กำลังดำเนินการ 🟡")
-    done = status_list.count("เสร็จสิ้น 🟢")
-    todo = status_list.count("ยังไม่ดำเนินการ 🔴")
-
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🟡 กำลังดำเนินการ", doing)
-    c3.metric("🟢 เสร็จสิ้น", done)
-    c4.metric("🔴 ยังไม่ดำเนินการ", todo)
+    c1.metric("📦 ทั้งหมด", len(filtered))
+    c2.metric("🟡 กำลังดำเนินการ", status_list.count("กำลังดำเนินการ 🟡"))
+    c3.metric("🟢 เสร็จสิ้น", status_list.count("เสร็จสิ้น 🟢"))
+    c4.metric("🔴 ยังไม่ดำเนินการ", status_list.count("ยังไม่ดำเนินการ 🔴"))
 
     st.markdown("---")
 
@@ -258,14 +278,6 @@ def admin_app():
 
         st.bar_chart(df_progress.set_index("หน่วย"))
 
-        fig, ax = plt.subplots()
-        ax.pie(
-            [todo, doing, done],
-            labels=["🔴 ยังไม่ดำเนินการ", "🟡 กำลังดำเนินการ", "🟢 เสร็จสิ้น"],
-            autopct='%1.1f%%'
-        )
-        st.pyplot(fig)
-
     else:
         st.warning("ยังไม่มีข้อมูล")
 
@@ -274,7 +286,7 @@ def admin_app():
     # REPORT
     st.subheader("📄 รายงาน")
 
-    for i, d in enumerate(filtered):   # 🔥 FIX KEY DUPLICATE
+    for i, d in enumerate(filtered):
 
         col1, col2 = st.columns([3, 1])
 
@@ -289,41 +301,20 @@ def admin_app():
 """)
 
             if d[7]:
-                imgs = d[7].split(",")
-                cols = st.columns(min(len(imgs), 3))
-
-                for j, img in enumerate(imgs):
+                for img in d[7].split(","):
                     if os.path.exists(img):
-                        cols[j % 3].image(img, use_container_width=True)
+                        st.image(img, width=250)
 
         with col2:
-            if st.button("🗑 ลบ", key=f"del_{i}_{d[0]}_{d[1]}"):  # 🔥 FIX
+            if st.button("🗑 ลบ", key=f"del_{i}_{d[0]}_{d[1]}"):
                 delete(d[1], d[0])
                 st.rerun()
 
     # EXPORT
     st.markdown("---")
-    st.subheader("📤 EXPORT")
-
-    if st.button("📊 Export PPT"):
+    if st.button("📤 Export PPT"):
         ppt = export_ppt(filtered)
-
-        st.download_button(
-            "📥 ดาวน์โหลด PPT",
-            ppt,
-            file_name="STAFF6_REPORT.pptx"
-        )
-
-    # DATABASE VIEW
-    st.markdown("---")
-    st.subheader("🧠 DATABASE VIEW")
-
-    df = pd.DataFrame(filtered, columns=[
-        "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
-        "ปัญหา","รูป","วันที่","เวลา"
-    ])
-
-    st.dataframe(df, use_container_width=True)
+        st.download_button("📥 ดาวน์โหลด", ppt, file_name="report.pptx")
 
 # ================= LOGIN =================
 def login_page():
@@ -340,9 +331,8 @@ def login_page():
         else:
             st.error("Login ไม่ถูกต้อง")
 
-# ================= ROUTER =================
+# ================= MAIN =================
 def main():
-
     if st.session_state["login"]:
         admin_app()
     else:
