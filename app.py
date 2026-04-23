@@ -61,7 +61,6 @@ def connect(unit):
     conn = sqlite3.connect(db_path(unit), check_same_thread=False)
     c = conn.cursor()
 
-    # ตารางงานล่าสุด
     c.execute("""
     CREATE TABLE IF NOT EXISTS reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +76,6 @@ def connect(unit):
     )
     """)
 
-    # 🔥 ตาราง history
     c.execute("""
     CREATE TABLE IF NOT EXISTS history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,7 +162,7 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # 🔥 บันทึก history ทุกครั้ง
+        # บันทึก history
         c.execute("""
         INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -175,7 +173,7 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # 🔍 เช็คงานเดิม
+        # update งานหลัก
         existing = c.execute("""
         SELECT id, progress FROM reports
         WHERE unit=? AND task=?
@@ -213,39 +211,31 @@ def user_app():
             ))
 
         conn.commit()
-        st.success("บันทึก + อัปเดตเรียบร้อย")
+        st.success("บันทึกเรียบร้อย")
 
     st.stop()
 
 # ================= LOAD =================
 def load_history():
-
     data = []
-
     for u in UNITS:
         conn, c = connect(u)
         rows = c.execute("SELECT * FROM history").fetchall()
-
         for r in rows:
             r = list(r)
             r[5] = norm(r[5])
             data.append(r)
-
     return data
 
 def load_latest():
-
     data = []
-
     for u in UNITS:
         conn, c = connect(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
-
         for r in rows:
             r = list(r)
             r[5] = norm(r[5])
             data.append(r)
-
     return data
 
 # ================= DELETE =================
@@ -271,9 +261,8 @@ def admin_app():
     history = load_history()
     latest = load_latest()
 
-    # ===== FILTER HISTORY =====
+    # filter history
     filtered = []
-
     for d in history:
         try:
             dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
@@ -288,7 +277,7 @@ def admin_app():
 
         filtered.append(d)
 
-    # ===== KPI ใช้ latest =====
+    # KPI
     st.subheader("📊 KPI")
 
     status_list = [norm(x[5]) for x in latest]
@@ -301,21 +290,36 @@ def admin_app():
 
     st.markdown("---")
 
-    # ===== REPORT (history) =====
+    # PROGRESS
+    st.subheader("📈 ความคืบหน้ารวม")
+
+    if len(latest) > 0:
+        avg = sum([d[4] for d in latest]) / len(latest)
+        st.metric("📊 ค่าเฉลี่ย (%)", f"{avg:.2f}%")
+
+        df = pd.DataFrame(latest, columns=[
+            "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
+            "ปัญหา","รูป","วันที่","เวลา"
+        ])
+
+        st.bar_chart(df.groupby("หน่วย")["%"].mean())
+
+    st.markdown("---")
+
+    # REPORT
     st.subheader("📄 รายงานรายวัน")
 
     for i, d in enumerate(filtered):
 
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([3,1])
 
         with col1:
             st.markdown(f"""
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
-
 📄 {d[3]}  
 📊 {d[4]}%  
 ⚠️ {d[6]}  
-📅 {d[8]}  
+📅 {d[8]}
 """)
 
             if d[7]:
@@ -324,19 +328,19 @@ def admin_app():
                         st.image(img, width=250)
 
         with col2:
-            st.write("")
+            if st.button("🗑 ลบ", key=f"{i}_{d[0]}"):
+                delete(d[1], d[0])
+                st.rerun()
 
-    # EXPORT
     st.markdown("---")
+
     if st.button("📤 Export PPT"):
         ppt = export_ppt(filtered)
         st.download_button("📥 ดาวน์โหลด", ppt, file_name="STAFF6_REPORT.pptx")
 
 # ================= LOGIN =================
 def login_page():
-
     st.title("🔐 STAFF6 LOGIN")
-
     u = st.text_input("User")
     p = st.text_input("Password", type="password")
 
