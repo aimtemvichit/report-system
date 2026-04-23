@@ -109,11 +109,6 @@ def export_ppt(data):
     for d in data:
         status_count[norm(d[5])] += 1
 
-    plt.figure()
-    plt.bar(status_count.keys(), status_count.values())
-    plt.savefig("bar.png")
-    plt.close()
-
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "STAFF6 SUMMARY"
 
@@ -170,7 +165,7 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # update latest
+        # latest update
         existing = c.execute("""
         SELECT id, progress FROM reports
         WHERE unit=? AND task=?
@@ -234,12 +229,6 @@ def load_latest():
             data.append(r)
     return data
 
-# ================= DELETE =================
-def delete(unit, rid):
-    conn, c = connect(unit)
-    c.execute("DELETE FROM reports WHERE id=?", (rid,))
-    conn.commit()
-
 # ================= ADMIN =================
 def admin_app():
 
@@ -248,7 +237,7 @@ def admin_app():
     history = load_history()
     latest = load_latest()
 
-    # 🔥 auto date range
+    # ===== FILTER =====
     all_dates = []
     for d in history:
         try:
@@ -256,12 +245,8 @@ def admin_app():
         except:
             pass
 
-    if all_dates:
-        min_date = min(all_dates)
-        max_date = max(all_dates)
-    else:
-        min_date = datetime.date.today()
-        max_date = datetime.date.today()
+    min_date = min(all_dates) if all_dates else datetime.date.today()
+    max_date = max(all_dates) if all_dates else datetime.date.today()
 
     with st.sidebar:
         if st.button("🚪 Logout"):
@@ -272,8 +257,8 @@ def admin_app():
         from_date = st.date_input("From", min_date)
         to_date = st.date_input("To", max_date)
 
-    # filter
-    filtered = []
+    # filter history
+    filtered_history = []
     for d in history:
         try:
             dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
@@ -286,38 +271,49 @@ def admin_app():
         if not (from_date <= dd <= to_date):
             continue
 
-        filtered.append(d)
+        filtered_history.append(d)
 
-    # KPI
+    # filter latest
+    filtered_latest = []
+    for d in latest:
+        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
+            continue
+        filtered_latest.append(d)
+
+    # ===== KPI =====
     st.subheader("📊 KPI")
-    status_list = [norm(x[5]) for x in latest]
+
+    status_list = [norm(x[5]) for x in filtered_latest]
 
     c1,c2,c3,c4 = st.columns(4)
-    c1.metric("📦 ทั้งหมด", len(latest))
+    c1.metric("📦 ทั้งหมด", len(filtered_latest))
     c2.metric("🟡 กำลังดำเนินการ", status_list.count("กำลังดำเนินการ 🟡"))
     c3.metric("🟢 เสร็จสิ้น", status_list.count("เสร็จสิ้น 🟢"))
     c4.metric("🔴 ยังไม่ดำเนินการ", status_list.count("ยังไม่ดำเนินการ 🔴"))
 
     st.markdown("---")
 
-    # PROGRESS
+    # ===== PROGRESS =====
     st.subheader("📈 ความคืบหน้ารวม")
-    if latest:
-        avg = sum([d[4] for d in latest]) / len(latest)
+
+    if filtered_latest:
+        avg = sum([d[4] for d in filtered_latest]) / len(filtered_latest)
         st.metric("ค่าเฉลี่ย (%)", f"{avg:.2f}%")
 
-        df = pd.DataFrame(latest, columns=[
+        df = pd.DataFrame(filtered_latest, columns=[
             "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
             "ปัญหา","รูป","วันที่","เวลา"
         ])
+
         st.bar_chart(df.groupby("หน่วย")["%"].mean())
 
     st.markdown("---")
 
-    # REPORT
+    # ===== REPORT =====
     st.subheader("📄 รายงานรายวัน")
 
-    for i, d in enumerate(filtered):
+    for i, d in enumerate(filtered_history):
+
         col1,col2 = st.columns([3,1])
 
         with col1:
@@ -341,13 +337,15 @@ def admin_app():
 
         with col2:
             if st.button("🗑 ลบ", key=f"{i}_{d[0]}"):
-                delete(d[1], d[0])
+                conn, c = connect(d[1])
+                c.execute("DELETE FROM reports WHERE id=?", (d[0],))
+                conn.commit()
                 st.rerun()
 
     st.markdown("---")
 
     if st.button("📤 Export PPT"):
-        ppt = export_ppt(filtered)
+        ppt = export_ppt(filtered_history)
         st.download_button("📥 ดาวน์โหลด", ppt, file_name="STAFF6_REPORT.pptx")
 
 # ================= LOGIN =================
