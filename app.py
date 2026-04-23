@@ -153,7 +153,7 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # ===== SAVE HISTORY =====
+        # save history
         c.execute("""
         INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -164,7 +164,7 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # ===== UPDATE / INSERT MAIN =====
+        # update latest
         existing = c.execute("""
         SELECT id, progress, images FROM reports
         WHERE unit=? AND task=?
@@ -176,7 +176,6 @@ def user_app():
 
             new_progress = max(old_progress, progress)
 
-            # 🔥 รวมรูปเก่า + ใหม่
             old_list = old_images.split(",") if old_images else []
             new_list = old_list + images
 
@@ -241,14 +240,25 @@ def admin_app():
     history = load_history()
     latest = load_latest()
 
+    # ===== FIX FILTER DATE =====
+    all_dates = []
+    for d in history:
+        try:
+            all_dates.append(datetime.datetime.strptime(d[8], "%Y-%m-%d").date())
+        except:
+            pass
+
+    min_date = min(all_dates) if all_dates else datetime.date.today()
+    max_date = max(all_dates) if all_dates else datetime.date.today()
+
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
         unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("From", datetime.date.today())
-        to_date = st.date_input("To", datetime.date.today())
+        from_date = st.date_input("From", min_date)
+        to_date = st.date_input("To", max_date)
 
     # ===== FILTER =====
     filtered_history = []
@@ -304,6 +314,9 @@ def admin_app():
 
     # ===== REPORT =====
     st.subheader("📄 รายงาน")
+
+    if not filtered_history:
+        st.warning("⚠️ ไม่มีข้อมูลในช่วงวันที่ที่เลือก")
 
     for i, d in enumerate(filtered_history):
 
