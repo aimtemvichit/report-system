@@ -4,7 +4,6 @@ import os
 import datetime
 import time
 import pandas as pd
-import io
 import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
@@ -39,13 +38,11 @@ STATUS = [
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
-
     s = str(s)
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
     if "ดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
-
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
@@ -122,7 +119,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD ALL =================
+# ================= LOAD =================
 def load_all():
 
     data = []
@@ -149,7 +146,6 @@ def admin_app():
 
     st.title("🚨 STAFF6 COMMAND CENTER")
 
-    # ================= FILTER PANEL =================
     with st.sidebar:
         st.markdown("## CONTROL PANEL")
 
@@ -157,10 +153,9 @@ def admin_app():
             st.session_state["login"] = False
             st.rerun()
 
-        unit_filter = st.selectbox("📌 หน่วย", ["ทั้งหมด"] + UNITS)
-
-        from_date = st.date_input("📅 จากวันที่", datetime.date.today())
-        to_date = st.date_input("📅 ถึงวันที่", datetime.date.today())
+        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
+        from_date = st.date_input("From", datetime.date.today())
+        to_date = st.date_input("To", datetime.date.today())
 
     data = load_all()
 
@@ -169,14 +164,14 @@ def admin_app():
 
     for d in data:
         try:
-            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+            dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
         except:
             continue
 
         if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
             continue
 
-        if not (from_date <= d_date <= to_date):
+        if not (from_date <= dd <= to_date):
             continue
 
         filtered.append(d)
@@ -187,19 +182,21 @@ def admin_app():
     status_list = [norm(x[5]) for x in filtered]
 
     total = len(status_list)
-    todo = status_list.count("ยังไม่ดำเนินการ 🔴")
     doing = status_list.count("กำลังดำเนินการ 🟡")
     done = status_list.count("เสร็จสิ้น 🟢")
+    todo = status_list.count("ยังไม่ดำเนินการ 🔴")
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
+
     c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🟡 ดำเนินการ", doing)
+    c2.metric("🟡 กำลังดำเนินการ", doing)
     c3.metric("🟢 เสร็จสิ้น", done)
+    c4.metric("🔴 ยังไม่ดำเนินการ", todo)
 
     st.markdown("---")
 
-    # ================= REPORT (FULL DETAIL + IMAGE) =================
-    st.subheader("📄 รายงานทั้งหมด")
+    # ================= REPORT =================
+    st.subheader("📄 รายงาน")
 
     for d in filtered:
 
@@ -211,7 +208,6 @@ def admin_app():
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
 
 📄 {d[3]}  
-
 📊 Progress: {d[4]}%  
 ⚠️ ปัญหา: {d[6]}  
 📅 วันที่: {d[8]}  
@@ -219,7 +215,6 @@ def admin_app():
 
             if d[7]:
                 imgs = d[7].split(",")
-
                 img_cols = st.columns(min(len(imgs), 3))
 
                 for i, img in enumerate(imgs):
@@ -233,7 +228,7 @@ def admin_app():
 
     # ================= RAW DATA =================
     st.markdown("---")
-    st.subheader("🧠 RAW DATABASE")
+    st.subheader("🧠 DATABASE VIEW")
 
     df = pd.DataFrame(filtered, columns=[
         "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
@@ -248,7 +243,7 @@ def login_page():
     st.title("🔐 STAFF6 LOGIN")
 
     u = st.text_input("User")
-    p = st.text_input("Password", type="password")
+    p = st.text_input("Pass", type="password")
 
     if st.button("Login"):
         if u == ADMIN_USER and p == ADMIN_PASS:
