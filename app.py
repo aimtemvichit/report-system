@@ -35,15 +35,16 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (กัน KPI พัง 100%) =================
+# ================= NORMALIZE (กัน KPI หาย 100%) =================
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
 
     s = str(s)
 
-    if "เสร็จ" in s or "done" in s.lower():
+    if "เสร็จ" in s or "done" in s.lower() or "complete" in s.lower():
         return "เสร็จสิ้น 🟢"
+
     if "ดำเนิน" in s or "progress" in s.lower():
         return "กำลังดำเนินการ 🟡"
 
@@ -123,7 +124,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD =================
+# ================= LOAD ALL =================
 def load_all():
 
     data = []
@@ -134,7 +135,7 @@ def load_all():
 
         for r in rows:
             r = list(r)
-            r[5] = norm(r[5])   # 🔥 FIX KPI ทุก record
+            r[5] = norm(r[5])  # 🔥 FIX ทุก record
             data.append(r)
 
     return data
@@ -145,7 +146,7 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPT (16:9) =================
+# ================= EXPORT PPT =================
 def export_ppt(data):
 
     prs = Presentation()
@@ -161,7 +162,6 @@ def export_ppt(data):
     for d in data:
         status_count[norm(d[5])] += 1
 
-    # GRAPH
     plt.figure()
     plt.bar(status_count.keys(), status_count.values())
     plt.tight_layout()
@@ -179,7 +179,7 @@ def export_ppt(data):
     slide.shapes.add_textbox(
         Inches(0.5), Inches(1), Inches(6), Inches(3)
     ).text = f"""
-TOTAL: {len(data)}
+📦 TOTAL: {len(data)}
 🔴 ยังไม่ดำเนินการ: {status_count['ยังไม่ดำเนินการ 🔴']}
 🟡 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
 🟢 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
@@ -187,25 +187,6 @@ TOTAL: {len(data)}
 
     slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
     slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
-
-    for d in data:
-
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = f"{d[1]} | {d[2]}"
-
-        text = f"""
-หน่วย: {d[1]}
-งาน: {d[2]}
-รายละเอียด: {d[3]}
-ความคืบหน้า: {d[4]}%
-สถานะ: {norm(d[5])}
-ปัญหา: {d[6]}
-วันที่: {d[8]}
-"""
-
-        slide.shapes.add_textbox(
-            Inches(0.5), Inches(0.5), Inches(6), Inches(4)
-        ).text = text
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -218,8 +199,6 @@ def admin_app():
     st.title("🚨 WAR ROOM COMMAND CENTER")
 
     with st.sidebar:
-        st.markdown("## CONTROL")
-
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
@@ -231,18 +210,22 @@ def admin_app():
     if unit_filter != "ทั้งหมด":
         data = [d for d in data if d[1] == unit_filter]
 
-    # ================= KPI =================
+    # ================= KPI (FIXED 100%) =================
     st.subheader("📊 KPI")
 
-    total = len(data)
-    doing = len([x for x in data if norm(x[5]) == "กำลังดำเนินการ 🟡"])
-    done = len([x for x in data if norm(x[5]) == "เสร็จสิ้น 🟢"])
-    todo = len([x for x in data if norm(x[5]) == "ยังไม่ดำเนินการ 🔴"])
+    status_list = [norm(x[5]) for x in data]
 
-    c1, c2, c3 = st.columns(3)
+    total = len(status_list)
+    todo = status_list.count("ยังไม่ดำเนินการ 🔴")
+    doing = status_list.count("กำลังดำเนินการ 🟡")
+    done = status_list.count("เสร็จสิ้น 🟢")
+
+    c1, c2, c3, c4 = st.columns(4)
+
     c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🟡 กำลังดำเนินการ", doing)
-    c3.metric("🟢 เสร็จสิ้น", done)
+    c2.metric("🔴 ยังไม่ดำเนินการ", todo)
+    c3.metric("🟡 กำลังดำเนินการ", doing)
+    c4.metric("🟢 เสร็จสิ้น", done)
 
     st.markdown("---")
 
@@ -271,7 +254,7 @@ def admin_app():
         ppt = export_ppt(data)
 
         st.download_button(
-            "📥 ดาวน์โหลด PPT",
+            "📥 ดาวน์โหลด PPTX",
             ppt,
             file_name="WAR_ROOM.pptx"
         )
