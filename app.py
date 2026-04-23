@@ -93,12 +93,14 @@ def connect(unit):
     conn.commit()
     return conn, c
 
-# ================= EXPORT =================
+# ================= EXPORT PPT =================
 def export_ppt(data):
+
     prs = Presentation()
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
+    # ===== KPI =====
     status_count = {
         "ยังไม่ดำเนินการ 🔴": 0,
         "กำลังดำเนินการ 🟡": 0,
@@ -120,6 +122,49 @@ TOTAL: {len(data)}
 🟢 {status_count['เสร็จสิ้น 🟢']}
 """
 
+    # ===== DETAIL + IMAGE =====
+    for d in data:
+
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.title.text = f"{d[1]} | {d[2]}"
+
+        text = f"""
+หน่วย: {d[1]}
+งาน: {d[2]}
+รายละเอียด: {d[3]}
+ความคืบหน้า: {d[4]}%
+สถานะ: {norm(d[5])}
+ปัญหา: {d[6]}
+วันที่: {d[8]}
+"""
+
+        slide.shapes.add_textbox(
+            Inches(0.5), Inches(0.5), Inches(6), Inches(4)
+        ).text = text
+
+        # 🔥 ใส่ภาพ (สำคัญ)
+        if d[7]:
+            imgs = d[7].split(",")
+
+            x = 6
+            y = 1
+
+            for img in imgs:
+                if img and os.path.exists(img):
+                    try:
+                        slide.shapes.add_picture(
+                            img,
+                            Inches(x),
+                            Inches(y),
+                            width=Inches(3)
+                        )
+                        x += 3
+                        if x > 9:
+                            x = 6
+                            y += 2
+                    except:
+                        pass
+
     buf = io.BytesIO()
     prs.save(buf)
     buf.seek(0)
@@ -127,6 +172,7 @@ TOTAL: {len(data)}
 
 # ================= USER =================
 def user_app():
+
     st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
 
     unit = st.selectbox("เลือกหน่วย", UNITS)
@@ -153,7 +199,7 @@ def user_app():
 
     if st.button("📤 ส่งรายงาน"):
 
-        # save history
+        # history
         c.execute("""
         INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
@@ -164,7 +210,7 @@ def user_app():
             str(datetime.datetime.now())
         ))
 
-        # update latest
+        # latest
         existing = c.execute("""
         SELECT id, progress, images FROM reports
         WHERE unit=? AND task=?
@@ -240,7 +286,7 @@ def admin_app():
     history = load_history()
     latest = load_latest()
 
-    # ===== FIX FILTER DATE =====
+    # FIX DATE RANGE
     all_dates = []
     for d in history:
         try:
@@ -260,7 +306,7 @@ def admin_app():
         from_date = st.date_input("From", min_date)
         to_date = st.date_input("To", max_date)
 
-    # ===== FILTER =====
+    # FILTER
     filtered_history = []
     for d in history:
         try:
@@ -282,7 +328,7 @@ def admin_app():
             continue
         filtered_latest.append(d)
 
-    # ===== KPI =====
+    # KPI
     st.subheader("📊 KPI")
 
     status_list = [norm(x[5]) for x in filtered_latest]
@@ -295,7 +341,7 @@ def admin_app():
 
     st.markdown("---")
 
-    # ===== GRAPH =====
+    # GRAPH
     st.subheader("📈 ความคืบหน้า")
 
     if filtered_latest:
@@ -307,16 +353,12 @@ def admin_app():
         if unit_filter == "ทั้งหมด":
             st.bar_chart(df.groupby("หน่วย")["%"].mean())
         else:
-            df["งาน"] = df["งาน"].str[:25]
             st.bar_chart(df.groupby("งาน")["%"].mean())
 
     st.markdown("---")
 
-    # ===== REPORT =====
+    # REPORT
     st.subheader("📄 รายงาน")
-
-    if not filtered_history:
-        st.warning("⚠️ ไม่มีข้อมูลในช่วงวันที่ที่เลือก")
 
     for i, d in enumerate(filtered_history):
 
