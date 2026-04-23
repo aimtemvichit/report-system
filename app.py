@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
+import io
 
 # ================= CONFIG =================
 st.set_page_config(page_title="STAFF6 COMMAND CENTER", layout="wide")
@@ -75,6 +76,44 @@ def connect(unit):
 
     conn.commit()
     return conn, c
+
+# ================= EXPORT =================
+def export_ppt(data):
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.33)
+    prs.slide_height = Inches(7.5)
+
+    status_count = {
+        "ยังไม่ดำเนินการ 🔴": 0,
+        "กำลังดำเนินการ 🟡": 0,
+        "เสร็จสิ้น 🟢": 0
+    }
+
+    for d in data:
+        status_count[norm(d[5])] += 1
+
+    plt.figure()
+    plt.bar(status_count.keys(), status_count.values())
+    plt.savefig("bar.png")
+    plt.close()
+
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "STAFF6 SUMMARY"
+
+    slide.shapes.add_textbox(
+        Inches(1), Inches(1), Inches(6), Inches(3)
+    ).text = f"""
+TOTAL: {len(data)}
+🔴 {status_count['ยังไม่ดำเนินการ 🔴']}
+🟡 {status_count['กำลังดำเนินการ 🟡']}
+🟢 {status_count['เสร็จสิ้น 🟢']}
+"""
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+    return buf
 
 # ================= USER =================
 def user_app():
@@ -147,8 +186,6 @@ def admin_app():
     st.title("🚨 STAFF6 COMMAND CENTER")
 
     with st.sidebar:
-        st.markdown("## CONTROL PANEL")
-
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
@@ -159,7 +196,6 @@ def admin_app():
 
     data = load_all()
 
-    # ================= FILTER =================
     filtered = []
 
     for d in data:
@@ -176,7 +212,7 @@ def admin_app():
 
         filtered.append(d)
 
-    # ================= KPI =================
+    # KPI
     st.subheader("📊 KPI")
 
     status_list = [norm(x[5]) for x in filtered]
@@ -187,7 +223,6 @@ def admin_app():
     todo = status_list.count("ยังไม่ดำเนินการ 🔴")
 
     c1, c2, c3, c4 = st.columns(4)
-
     c1.metric("📦 ทั้งหมด", total)
     c2.metric("🟡 กำลังดำเนินการ", doing)
     c3.metric("🟢 เสร็จสิ้น", done)
@@ -195,7 +230,7 @@ def admin_app():
 
     st.markdown("---")
 
-    # ================= REPORT =================
+    # REPORT
     st.subheader("📄 รายงาน")
 
     for d in filtered:
@@ -203,30 +238,42 @@ def admin_app():
         col1, col2 = st.columns([3, 1])
 
         with col1:
-
             st.markdown(f"""
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
 
 📄 {d[3]}  
-📊 Progress: {d[4]}%  
-⚠️ ปัญหา: {d[6]}  
-📅 วันที่: {d[8]}  
+📊 {d[4]}%  
+⚠️ {d[6]}  
+📅 {d[8]}  
 """)
 
             if d[7]:
                 imgs = d[7].split(",")
-                img_cols = st.columns(min(len(imgs), 3))
+                cols = st.columns(min(len(imgs), 3))
 
                 for i, img in enumerate(imgs):
                     if os.path.exists(img):
-                        img_cols[i % 3].image(img, use_container_width=True)
+                        cols[i % 3].image(img, use_container_width=True)
 
         with col2:
             if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete(d[1], d[0])
                 st.rerun()
 
-    # ================= RAW DATA =================
+    # ================= EXPORT (เพิ่มอย่างเดียว) =================
+    st.markdown("---")
+    st.subheader("📤 EXPORT")
+
+    if st.button("📊 Export PPT"):
+        ppt = export_ppt(filtered)
+
+        st.download_button(
+            "📥 ดาวน์โหลด PPT",
+            ppt,
+            file_name="STAFF6_REPORT.pptx"
+        )
+
+    # DATABASE VIEW
     st.markdown("---")
     st.subheader("🧠 DATABASE VIEW")
 
@@ -243,7 +290,7 @@ def login_page():
     st.title("🔐 STAFF6 LOGIN")
 
     u = st.text_input("User")
-    p = st.text_input("Pass", type="password")
+    p = st.text_input("Password", type="password")
 
     if st.button("Login"):
         if u == ADMIN_USER and p == ADMIN_PASS:
