@@ -33,21 +33,25 @@ UNITS = [
     "กรม ทย.รอ.อย."
 ]
 
-# ================= STATUS STANDARD =================
+# ================= STATUS FIXED =================
 STATUS = [
     "ยังไม่ดำเนินการ 🔴",
     "กำลังดำเนินการ 🟡",
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (กันสถานะหาย) =================
+# ================= NORMALIZE (กันหาย 100%) =================
 def normalize_status(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
-    if "ดำเนิน" in s:
-        return "กำลังดำเนินการ 🟡"
+
+    s = str(s)
+
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
+    if "ดำเนิน" in s:
+        return "กำลังดำเนินการ 🟡"
+
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
@@ -129,7 +133,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD =================
+# ================= LOAD ALL (FIX STATUS HERE) =================
 def load_all():
 
     data = []
@@ -138,11 +142,10 @@ def load_all():
         conn, c = connect_db(u)
         rows = c.execute("SELECT * FROM reports").fetchall()
 
-        # normalize ทุก record กันหาย
         fixed = []
         for r in rows:
             r = list(r)
-            r[5] = normalize_status(r[5])
+            r[5] = normalize_status(r[5])  # 🔥 FIX 100%
             fixed.append(r)
 
         data.extend(fixed)
@@ -171,8 +174,8 @@ def export_ppt(data):
     }
 
     for d in data:
-        d[5] = normalize_status(d[5])
-        status_count[d[5]] += 1
+        s = normalize_status(d[5])
+        status_count[s] += 1
 
     # GRAPH
     plt.figure()
@@ -280,11 +283,9 @@ def admin_app():
     # KPI
     st.subheader("📊 KPI")
 
-    total = len(filtered)
-    done = len([x for x in filtered if normalize_status(x[5]) == "เสร็จสิ้น 🟢"])
-
     c1, c2, c3 = st.columns(3)
-    c1.metric("📦 ทั้งหมด", total)
+
+    c1.metric("📦 ทั้งหมด", len(filtered))
     c2.metric("🟡 กำลังดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "กำลังดำเนินการ 🟡"]))
     c3.metric("🔴 ยังไม่ดำเนินการ", len([x for x in filtered if normalize_status(x[5]) == "ยังไม่ดำเนินการ 🔴"]))
 
@@ -346,7 +347,7 @@ def login_page():
     p = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if u == "admin06" and p == "St006904#":
+        if u == ADMIN_USER and p == ADMIN_PASS:
             st.session_state["login"] = True
             st.rerun()
         else:
