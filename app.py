@@ -10,7 +10,7 @@ from pptx import Presentation
 from pptx.util import Inches
 
 # ================= CONFIG =================
-st.set_page_config(page_title="WAR ROOM COMMAND CENTER", layout="wide")
+st.set_page_config(page_title="STAFF6 COMMAND CENTER", layout="wide")
 
 UPLOAD_DIR = "uploads"
 DB_DIR = "database"
@@ -35,17 +35,15 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
-# ================= NORMALIZE (กัน KPI หาย 100%) =================
+# ================= NORMALIZE =================
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
 
     s = str(s)
-
-    if "เสร็จ" in s or "done" in s.lower() or "complete" in s.lower():
+    if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
-
-    if "ดำเนิน" in s or "progress" in s.lower():
+    if "ดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
 
     return "ยังไม่ดำเนินการ 🔴"
@@ -135,7 +133,7 @@ def load_all():
 
         for r in rows:
             r = list(r)
-            r[5] = norm(r[5])  # 🔥 FIX ทุก record
+            r[5] = norm(r[5])
             data.append(r)
 
     return data
@@ -146,124 +144,98 @@ def delete(unit, rid):
     c.execute("DELETE FROM reports WHERE id=?", (rid,))
     conn.commit()
 
-# ================= EXPORT PPT =================
-def export_ppt(data):
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.33)
-    prs.slide_height = Inches(7.5)
-
-    status_count = {
-        "ยังไม่ดำเนินการ 🔴": 0,
-        "กำลังดำเนินการ 🟡": 0,
-        "เสร็จสิ้น 🟢": 0
-    }
-
-    for d in data:
-        status_count[norm(d[5])] += 1
-
-    plt.figure()
-    plt.bar(status_count.keys(), status_count.values())
-    plt.tight_layout()
-    plt.savefig("bar.png")
-    plt.close()
-
-    plt.figure()
-    plt.pie(status_count.values(), labels=status_count.keys(), autopct="%1.1f%%")
-    plt.savefig("pie.png")
-    plt.close()
-
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "WAR ROOM SUMMARY"
-
-    slide.shapes.add_textbox(
-        Inches(0.5), Inches(1), Inches(6), Inches(3)
-    ).text = f"""
-📦 TOTAL: {len(data)}
-🔴 ยังไม่ดำเนินการ: {status_count['ยังไม่ดำเนินการ 🔴']}
-🟡 กำลังดำเนินการ: {status_count['กำลังดำเนินการ 🟡']}
-🟢 เสร็จสิ้น: {status_count['เสร็จสิ้น 🟢']}
-"""
-
-    slide.shapes.add_picture("bar.png", Inches(6), Inches(1), width=Inches(3))
-    slide.shapes.add_picture("pie.png", Inches(6), Inches(4), width=Inches(3))
-
-    buf = io.BytesIO()
-    prs.save(buf)
-    buf.seek(0)
-    return buf
-
 # ================= ADMIN =================
 def admin_app():
 
-    st.title("🚨 WAR ROOM COMMAND CENTER")
+    st.title("🚨 STAFF6 COMMAND CENTER")
 
+    # ================= FILTER PANEL =================
     with st.sidebar:
+        st.markdown("## CONTROL PANEL")
+
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
-        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
+        unit_filter = st.selectbox("📌 หน่วย", ["ทั้งหมด"] + UNITS)
+
+        from_date = st.date_input("📅 จากวันที่", datetime.date.today())
+        to_date = st.date_input("📅 ถึงวันที่", datetime.date.today())
 
     data = load_all()
 
-    if unit_filter != "ทั้งหมด":
-        data = [d for d in data if d[1] == unit_filter]
+    # ================= FILTER =================
+    filtered = []
 
-    # ================= KPI (FIXED 100%) =================
+    for d in data:
+        try:
+            d_date = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+        except:
+            continue
+
+        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
+            continue
+
+        if not (from_date <= d_date <= to_date):
+            continue
+
+        filtered.append(d)
+
+    # ================= KPI =================
     st.subheader("📊 KPI")
 
-    status_list = [norm(x[5]) for x in data]
+    status_list = [norm(x[5]) for x in filtered]
 
     total = len(status_list)
     todo = status_list.count("ยังไม่ดำเนินการ 🔴")
     doing = status_list.count("กำลังดำเนินการ 🟡")
     done = status_list.count("เสร็จสิ้น 🟢")
 
-    c1, c2, c3, c4 = st.columns(4)
-
+    c1, c2, c3 = st.columns(3)
     c1.metric("📦 ทั้งหมด", total)
-    c2.metric("🔴 ยังไม่ดำเนินการ", todo)
-    c3.metric("🟡 กำลังดำเนินการ", doing)
-    c4.metric("🟢 เสร็จสิ้น", done)
+    c2.metric("🟡 ดำเนินการ", doing)
+    c3.metric("🟢 เสร็จสิ้น", done)
 
     st.markdown("---")
 
-    # ================= REPORT =================
-    st.subheader("📄 REPORT")
+    # ================= REPORT (FULL DETAIL + IMAGE) =================
+    st.subheader("📄 รายงานทั้งหมด")
 
-    for d in data:
+    for d in filtered:
 
         col1, col2 = st.columns([3, 1])
 
         with col1:
-            st.write(f"**{d[1]} | {d[2]} | {norm(d[5])}**")
-            st.write(d[3])
-            st.write("📅", d[8])
+
+            st.markdown(f"""
+### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
+
+📄 {d[3]}  
+
+📊 Progress: {d[4]}%  
+⚠️ ปัญหา: {d[6]}  
+📅 วันที่: {d[8]}  
+""")
+
+            if d[7]:
+                imgs = d[7].split(",")
+
+                img_cols = st.columns(min(len(imgs), 3))
+
+                for i, img in enumerate(imgs):
+                    if os.path.exists(img):
+                        img_cols[i % 3].image(img, use_container_width=True)
 
         with col2:
             if st.button("🗑 ลบ", key=f"del_{d[0]}"):
                 delete(d[1], d[0])
                 st.rerun()
 
-    # ================= EXPORT =================
+    # ================= RAW DATA =================
     st.markdown("---")
+    st.subheader("🧠 RAW DATABASE")
 
-    if st.button("📤 EXPORT PPTX 16:9"):
-
-        ppt = export_ppt(data)
-
-        st.download_button(
-            "📥 ดาวน์โหลด PPTX",
-            ppt,
-            file_name="WAR_ROOM.pptx"
-        )
-
-    # ================= DB VIEW =================
-    st.markdown("---")
-    st.subheader("🧠 DATABASE VIEW")
-
-    df = pd.DataFrame(data, columns=[
+    df = pd.DataFrame(filtered, columns=[
         "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
         "ปัญหา","รูป","วันที่","เวลา"
     ])
@@ -273,17 +245,17 @@ def admin_app():
 # ================= LOGIN =================
 def login_page():
 
-    st.title("🔐 LOGIN")
+    st.title("🔐 STAFF6 LOGIN")
 
     u = st.text_input("User")
-    p = st.text_input("Pass", type="password")
+    p = st.text_input("Password", type="password")
 
     if st.button("Login"):
         if u == ADMIN_USER and p == ADMIN_PASS:
             st.session_state["login"] = True
             st.rerun()
         else:
-            st.error("ไม่ถูกต้อง")
+            st.error("Login ไม่ถูกต้อง")
 
 # ================= ROUTER =================
 def main():
