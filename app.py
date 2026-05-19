@@ -9,7 +9,10 @@ from pptx.util import Inches
 import io
 
 # ================= CONFIG =================
-st.set_page_config(page_title="STAFF6 COMMAND CENTER", layout="wide")
+st.set_page_config(
+    page_title="STAFF6 COMMAND CENTER",
+    layout="wide"
+)
 
 UPLOAD_DIR = "uploads"
 DB_DIR = "database"
@@ -39,7 +42,9 @@ STATUS = [
     "เสร็จสิ้น 🟢"
 ]
 
+# ================= STATUS FIX =================
 def norm(s):
+
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
 
@@ -48,28 +53,42 @@ def norm(s):
     if "ยังไม่ดำเนิน" in s:
         return "ยังไม่ดำเนินการ 🔴"
 
-    if "เสร็จ" in s:
-        return "เสร็จสิ้น 🟢"
-
     if "กำลังดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
 
+    if "เสร็จ" in s:
+        return "เสร็จสิ้น 🟢"
+
     return "ยังไม่ดำเนินการ 🔴"
 
-# ================= DB =================
+# ================= SAFE =================
 def safe(u):
-    return u.replace(" ", "_").replace(".", "")
 
+    return (
+        u.replace(" ", "_")
+        .replace(".", "")
+        .replace("/", "_")
+    )
+
+# ================= DATABASE =================
 def db_path(unit):
+
     folder = os.path.join(DB_DIR, safe(unit))
+
     os.makedirs(folder, exist_ok=True)
+
     return os.path.join(folder, "data.db")
 
 def connect(unit):
 
-    conn = sqlite3.connect(db_path(unit), check_same_thread=False)
+    conn = sqlite3.connect(
+        db_path(unit),
+        check_same_thread=False
+    )
+
     c = conn.cursor()
 
+    # REPORT
     c.execute("""
     CREATE TABLE IF NOT EXISTS reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +104,7 @@ def connect(unit):
     )
     """)
 
+    # HISTORY
     c.execute("""
     CREATE TABLE IF NOT EXISTS history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +133,7 @@ def export_ppt(data):
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    # ===== KPI =====
+    # ===== SUMMARY =====
     status_count = {
         "ยังไม่ดำเนินการ 🔴": 0,
         "กำลังดำเนินการ 🟡": 0,
@@ -123,41 +143,56 @@ def export_ppt(data):
     for d in data:
         status_count[norm(d[5])] += 1
 
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide = prs.slides.add_slide(
+        prs.slide_layouts[5]
+    )
 
     slide.shapes.title.text = "STAFF6 SUMMARY"
 
-    slide.shapes.add_textbox(
+    textbox = slide.shapes.add_textbox(
         Inches(1),
         Inches(1),
         Inches(6),
         Inches(3)
-    ).text = f"""
-TOTAL: {len(data)}
+    )
 
-🔴 {status_count['ยังไม่ดำเนินการ 🔴']}
-🟡 {status_count['กำลังดำเนินการ 🟡']}
-🟢 {status_count['เสร็จสิ้น 🟢']}
+    textbox.text = f"""
+TOTAL REPORT : {len(data)}
+
+🔴 ยังไม่ดำเนินการ :
+{status_count['ยังไม่ดำเนินการ 🔴']}
+
+🟡 กำลังดำเนินการ :
+{status_count['กำลังดำเนินการ 🟡']}
+
+🟢 เสร็จสิ้น :
+{status_count['เสร็จสิ้น 🟢']}
 """
 
     # ===== DETAIL =====
     for d in data:
 
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide = prs.slides.add_slide(
+            prs.slide_layouts[5]
+        )
 
         slide.shapes.title.text = f"{d[1]} | {d[2]}"
 
-        text = f"""
-หน่วย: {d[1]}
+        detail = f"""
+หน่วย:
+{d[1]}
 
-งาน: {d[2]}
+ภารกิจ:
+{d[2]}
 
 รายละเอียด:
 {d[3]}
 
-ความคืบหน้า: {d[4]}%
+ความคืบหน้า:
+{d[4]}%
 
-สถานะ: {norm(d[5])}
+สถานะ:
+{norm(d[5])}
 
 ปัญหา:
 {d[6]}
@@ -166,12 +201,14 @@ TOTAL: {len(data)}
 {d[8]}
 """
 
-        slide.shapes.add_textbox(
+        box = slide.shapes.add_textbox(
             Inches(0.5),
             Inches(1),
             Inches(5),
-            Inches(4)
-        ).text = text
+            Inches(5)
+        )
+
+        box.text = detail
 
         # ===== IMAGE =====
         if d[7]:
@@ -186,6 +223,7 @@ TOTAL: {len(data)}
                 if img and os.path.exists(img):
 
                     try:
+
                         slide.shapes.add_picture(
                             img,
                             Inches(x),
@@ -202,6 +240,7 @@ TOTAL: {len(data)}
                     except:
                         pass
 
+    # ===== SAVE =====
     buf = io.BytesIO()
 
     prs.save(buf)
@@ -210,7 +249,7 @@ TOTAL: {len(data)}
 
     return buf
 
-# ================= USER =================
+# ================= USER PAGE =================
 def user_app():
 
     st.title("📌 รายงานการปฏิบัติ")
@@ -234,12 +273,16 @@ def user_app():
     else:
         unit = selected_unit
 
+    # ===== DATE =====
     report_date = st.date_input(
         "📅 วันที่รายงาน",
         datetime.date.today()
     )
 
-    conn, c = connect(unit if unit else "OTHER")
+    # ===== CONNECT =====
+    conn, c = connect(
+        unit if unit else "OTHER"
+    )
 
     # ===== FORM =====
     task = st.text_input("ภารกิจ").strip()
@@ -259,23 +302,23 @@ def user_app():
 
     problem = st.text_area("ปัญหา")
 
+    # ===== IMAGE =====
     files = st.file_uploader(
         "📸 แนบรูป",
         accept_multiple_files=True
     )
 
-    # ===== IMAGE =====
     images = []
 
     if files:
 
         for f in files:
 
-            name = f"{time.time()}_{f.name}"
+            filename = f"{time.time()}_{f.name}"
 
             path = os.path.join(
                 UPLOAD_DIR,
-                name
+                filename
             )
 
             with open(path, "wb") as w:
@@ -287,13 +330,18 @@ def user_app():
     if st.button("📤 ส่งรายงาน"):
 
         if not unit:
+
             st.error("กรุณาระบุหน่วย")
+
             st.stop()
 
         # ===== HISTORY =====
         c.execute("""
         INSERT INTO history
-        VALUES (NULL,?,?,?,?,?,?,?,?,?)
+        VALUES (
+            NULL,
+            ?,?,?,?,?,?,?,?,?
+        )
         """, (
             unit,
             task,
@@ -318,6 +366,7 @@ def user_app():
             task
         )).fetchone()
 
+        # UPDATE
         if existing:
 
             rid, old_progress, old_images = existing
@@ -327,7 +376,10 @@ def user_app():
                 progress
             )
 
-            old_list = old_images.split(",") if old_images else []
+            old_list = (
+                old_images.split(",")
+                if old_images else []
+            )
 
             new_list = old_list + images
 
@@ -352,11 +404,15 @@ def user_app():
                 rid
             ))
 
+        # INSERT
         else:
 
             c.execute("""
             INSERT INTO reports
-            VALUES (NULL,?,?,?,?,?,?,?,?,?)
+            VALUES (
+                NULL,
+                ?,?,?,?,?,?,?,?,?
+            )
             """, (
                 unit,
                 task,
@@ -375,7 +431,7 @@ def user_app():
 
     st.stop()
 
-# ================= LOAD =================
+# ================= LOAD HISTORY =================
 def load_history():
 
     data = []
@@ -385,7 +441,12 @@ def load_history():
     for f in folders:
 
         try:
-            db = os.path.join(DB_DIR, f, "data.db")
+
+            db = os.path.join(
+                DB_DIR,
+                f,
+                "data.db"
+            )
 
             conn = sqlite3.connect(db)
 
@@ -408,6 +469,7 @@ def load_history():
 
     return data
 
+# ================= LOAD REPORT =================
 def load_latest():
 
     data = []
@@ -418,7 +480,11 @@ def load_latest():
 
         try:
 
-            db = os.path.join(DB_DIR, f, "data.db")
+            db = os.path.join(
+                DB_DIR,
+                f,
+                "data.db"
+            )
 
             conn = sqlite3.connect(db)
 
@@ -452,7 +518,9 @@ def admin_app():
 
     # ===== FILTER =====
     all_units = sorted(
-        list(set([x[1] for x in history]))
+        list(
+            set([x[1] for x in history])
+        )
     )
 
     all_dates = []
@@ -460,6 +528,7 @@ def admin_app():
     for d in history:
 
         try:
+
             all_dates.append(
                 datetime.datetime.strptime(
                     d[8],
@@ -470,16 +539,27 @@ def admin_app():
         except:
             pass
 
-    min_date = min(all_dates) if all_dates else datetime.date.today()
+    min_date = (
+        min(all_dates)
+        if all_dates
+        else datetime.date.today()
+    )
 
-    max_date = max(all_dates) if all_dates else datetime.date.today()
+    max_date = (
+        max(all_dates)
+        if all_dates
+        else datetime.date.today()
+    )
 
+    # ===== SIDEBAR =====
     with st.sidebar:
 
         st.subheader("FILTER")
 
         if st.button("🚪 Logout"):
+
             st.session_state["login"] = False
+
             st.rerun()
 
         unit_filter = st.selectbox(
@@ -497,12 +577,13 @@ def admin_app():
             max_date
         )
 
-    # ===== FILTER DATA =====
+    # ===== FILTER HISTORY =====
     filtered_history = []
 
     for d in history:
 
         try:
+
             dd = datetime.datetime.strptime(
                 d[8],
                 "%Y-%m-%d"
@@ -521,6 +602,7 @@ def admin_app():
 
         filtered_history.append(d)
 
+    # ===== FILTER LATEST =====
     filtered_latest = []
 
     for d in latest:
@@ -536,7 +618,8 @@ def admin_app():
     st.subheader("📊 KPI")
 
     status_list = [
-        norm(x[5]) for x in filtered_latest
+        norm(x[5])
+        for x in filtered_latest
     ]
 
     c1, c2, c3, c4 = st.columns(4)
@@ -548,17 +631,23 @@ def admin_app():
 
     c2.metric(
         "🟡 กำลังดำเนินการ",
-        status_list.count("กำลังดำเนินการ 🟡")
+        status_list.count(
+            "กำลังดำเนินการ 🟡"
+        )
     )
 
     c3.metric(
         "🟢 เสร็จสิ้น",
-        status_list.count("เสร็จสิ้น 🟢")
+        status_list.count(
+            "เสร็จสิ้น 🟢"
+        )
     )
 
     c4.metric(
         "🔴 ยังไม่ดำเนินการ",
-        status_list.count("ยังไม่ดำเนินการ 🔴")
+        status_list.count(
+            "ยังไม่ดำเนินการ 🔴"
+        )
     )
 
     st.markdown("---")
@@ -585,10 +674,13 @@ def admin_app():
         )
 
         if unit_filter == "ทั้งหมด":
+
             st.bar_chart(
                 df.groupby("หน่วย")["%"].mean()
             )
+
         else:
+
             st.bar_chart(
                 df.groupby("งาน")["%"].mean()
             )
@@ -623,12 +715,17 @@ def admin_app():
 
                 for img in d[7].split(","):
 
-                    if img and os.path.exists(img):
+                    if (
+                        img and
+                        os.path.exists(img)
+                    ):
+
                         st.image(
                             img,
                             width=250
                         )
 
+        # ===== DELETE =====
         with col2:
 
             if st.button(
@@ -638,12 +735,24 @@ def admin_app():
 
                 conn, c = connect(d[1])
 
+                # ลบ history
                 c.execute("""
-                DELETE FROM reports
+                DELETE FROM history
                 WHERE id=?
                 """, (d[0],))
 
+                # ลบ reports
+                c.execute("""
+                DELETE FROM reports
+                WHERE unit=? AND task=?
+                """, (
+                    d[1],
+                    d[2]
+                ))
+
                 conn.commit()
+
+                st.success("✅ ลบเรียบร้อย")
 
                 st.rerun()
 
@@ -652,7 +761,9 @@ def admin_app():
     # ===== EXPORT =====
     if st.button("📤 Export PPT"):
 
-        ppt = export_ppt(filtered_history)
+        ppt = export_ppt(
+            filtered_history
+        )
 
         st.download_button(
             "📥 ดาวน์โหลด PowerPoint",
@@ -660,7 +771,7 @@ def admin_app():
             file_name="STAFF6_REPORT.pptx"
         )
 
-# ================= LOGIN =================
+# ================= LOGIN PAGE =================
 def login_page():
 
     st.title("🔐 STAFF6 LOGIN")
@@ -674,14 +785,20 @@ def login_page():
 
     if st.button("Login"):
 
-        if u == ADMIN_USER and p == ADMIN_PASS:
+        if (
+            u == ADMIN_USER and
+            p == ADMIN_PASS
+        ):
 
             st.session_state["login"] = True
 
             st.rerun()
 
         else:
-            st.error("❌ Login ไม่ถูกต้อง")
+
+            st.error(
+                "❌ Login ไม่ถูกต้อง"
+            )
 
 # ================= MAIN =================
 def main():
