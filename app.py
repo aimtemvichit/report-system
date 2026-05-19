@@ -1,4 +1,3 @@
-```python id="allfile904"
 import streamlit as st
 import sqlite3
 import os
