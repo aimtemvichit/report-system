@@ -1,3 +1,4 @@
+```python id="allfile904"
 import streamlit as st
 import sqlite3
 import os
@@ -98,7 +99,7 @@ def connect(unit):
         progress INTEGER,
         status TEXT,
         problem TEXT,
-        images TEXT,
+        files TEXT,
         report_date TEXT,
         time TEXT
     )
@@ -114,7 +115,7 @@ def connect(unit):
         progress INTEGER,
         status TEXT,
         problem TEXT,
-        images TEXT,
+        files TEXT,
         report_date TEXT,
         time TEXT
     )
@@ -210,35 +211,48 @@ TOTAL REPORT : {len(data)}
 
         box.text = detail
 
-        # ===== IMAGE =====
+        # ===== FILE IMAGE =====
         if d[7]:
 
-            imgs = d[7].split(",")
+            files = d[7].split(",")
 
             x = 6
             y = 1
 
-            for img in imgs:
+            for file in files:
 
-                if img and os.path.exists(img):
+                if (
+                    file and
+                    os.path.exists(file)
+                ):
 
-                    try:
+                    ext = file.lower()
 
-                        slide.shapes.add_picture(
-                            img,
-                            Inches(x),
-                            Inches(y),
-                            width=Inches(3)
-                        )
+                    # ใส่เฉพาะรูปลง PPT
+                    if (
+                        ext.endswith(".png")
+                        or ext.endswith(".jpg")
+                        or ext.endswith(".jpeg")
+                        or ext.endswith(".webp")
+                    ):
 
-                        x += 3
+                        try:
 
-                        if x > 9:
-                            x = 6
-                            y += 2
+                            slide.shapes.add_picture(
+                                file,
+                                Inches(x),
+                                Inches(y),
+                                width=Inches(3)
+                            )
 
-                    except:
-                        pass
+                            x += 3
+
+                            if x > 9:
+                                x = 6
+                                y += 2
+
+                        except:
+                            pass
 
     # ===== SAVE =====
     buf = io.BytesIO()
@@ -302,17 +316,18 @@ def user_app():
 
     problem = st.text_area("ปัญหา")
 
-    # ===== IMAGE =====
-    files = st.file_uploader(
-        "📸 แนบรูป",
-        accept_multiple_files=True
+    # ===== FILE =====
+    uploaded_files = st.file_uploader(
+        "📎 แนบไฟล์",
+        accept_multiple_files=True,
+        type=None
     )
 
-    images = []
+    files = []
 
-    if files:
+    if uploaded_files:
 
-        for f in files:
+        for f in uploaded_files:
 
             filename = f"{time.time()}_{f.name}"
 
@@ -324,7 +339,7 @@ def user_app():
             with open(path, "wb") as w:
                 w.write(f.getbuffer())
 
-            images.append(path)
+            files.append(path)
 
     # ===== SAVE =====
     if st.button("📤 ส่งรายงาน"):
@@ -349,14 +364,14 @@ def user_app():
             progress,
             norm(status),
             problem,
-            ",".join(images),
+            ",".join(files),
             str(report_date),
             str(datetime.datetime.now())
         ))
 
         # ===== REPORT =====
         existing = c.execute("""
-        SELECT id, progress, images
+        SELECT id, progress, files
         FROM reports
         WHERE unit=? AND task=?
         ORDER BY id DESC
@@ -369,7 +384,7 @@ def user_app():
         # UPDATE
         if existing:
 
-            rid, old_progress, old_images = existing
+            rid, old_progress, old_files = existing
 
             new_progress = max(
                 old_progress,
@@ -377,11 +392,11 @@ def user_app():
             )
 
             old_list = (
-                old_images.split(",")
-                if old_images else []
+                old_files.split(",")
+                if old_files else []
             )
 
-            new_list = old_list + images
+            new_list = old_list + files
 
             c.execute("""
             UPDATE reports
@@ -389,7 +404,7 @@ def user_app():
                 progress=?,
                 status=?,
                 problem=?,
-                images=?,
+                files=?,
                 report_date=?,
                 time=?
             WHERE id=?
@@ -420,7 +435,7 @@ def user_app():
                 progress,
                 norm(status),
                 problem,
-                ",".join(images),
+                ",".join(files),
                 str(report_date),
                 str(datetime.datetime.now())
             ))
@@ -667,7 +682,7 @@ def admin_app():
                 "%",
                 "สถานะ",
                 "ปัญหา",
-                "รูป",
+                "ไฟล์",
                 "วันที่",
                 "เวลา"
             ]
@@ -710,20 +725,44 @@ def admin_app():
 🕒 {d[9]}
 """)
 
-            # ===== IMAGE =====
+            # ===== FILE =====
             if d[7]:
 
-                for img in d[7].split(","):
+                st.markdown("#### 📎 ไฟล์แนบ")
+
+                for file in d[7].split(","):
 
                     if (
-                        img and
-                        os.path.exists(img)
+                        file and
+                        os.path.exists(file)
                     ):
 
-                        st.image(
-                            img,
-                            width=250
-                        )
+                        filename = os.path.basename(file)
+
+                        ext = file.lower()
+
+                        # รูป
+                        if (
+                            ext.endswith(".png")
+                            or ext.endswith(".jpg")
+                            or ext.endswith(".jpeg")
+                            or ext.endswith(".webp")
+                        ):
+
+                            st.image(
+                                file,
+                                width=250
+                            )
+
+                        # DOWNLOAD
+                        with open(file, "rb") as f:
+
+                            st.download_button(
+                                label=f"📥 {filename}",
+                                data=f,
+                                file_name=filename,
+                                key=f"{i}_{filename}"
+                            )
 
         # ===== DELETE =====
         with col2:
