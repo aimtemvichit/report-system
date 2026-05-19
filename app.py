@@ -4,7 +4,6 @@ import os
 import datetime
 import time
 import pandas as pd
-import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 import io
@@ -26,7 +25,12 @@ if "login" not in st.session_state:
     st.session_state["login"] = False
 
 # ================= UNITS =================
-UNITS = ["พล.1 รอ.", "พล.ร.2 รอ.", "พล.ม.2 รอ.", "กรม ทย.รอ.อย."]
+UNITS = [
+    "พล.1 รอ.",
+    "พล.ร.2 รอ.",
+    "พล.ม.2 รอ.",
+    "กรม ทย.รอ.อย."
+]
 
 # ================= STATUS =================
 STATUS = [
@@ -38,13 +42,18 @@ STATUS = [
 def norm(s):
     if not s:
         return "ยังไม่ดำเนินการ 🔴"
+
     s = str(s)
+
     if "ยังไม่ดำเนิน" in s:
         return "ยังไม่ดำเนินการ 🔴"
+
     if "เสร็จ" in s:
         return "เสร็จสิ้น 🟢"
+
     if "กำลังดำเนิน" in s:
         return "กำลังดำเนินการ 🟡"
+
     return "ยังไม่ดำเนินการ 🔴"
 
 # ================= DB =================
@@ -57,6 +66,7 @@ def db_path(unit):
     return os.path.join(folder, "data.db")
 
 def connect(unit):
+
     conn = sqlite3.connect(db_path(unit), check_same_thread=False)
     c = conn.cursor()
 
@@ -91,12 +101,15 @@ def connect(unit):
     """)
 
     conn.commit()
+
     return conn, c
 
 # ================= EXPORT PPT =================
 def export_ppt(data):
 
     prs = Presentation()
+
+    # 16:9
     prs.slide_width = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
@@ -111,46 +124,67 @@ def export_ppt(data):
         status_count[norm(d[5])] += 1
 
     slide = prs.slides.add_slide(prs.slide_layouts[5])
+
     slide.shapes.title.text = "STAFF6 SUMMARY"
 
     slide.shapes.add_textbox(
-        Inches(1), Inches(1), Inches(6), Inches(3)
+        Inches(1),
+        Inches(1),
+        Inches(6),
+        Inches(3)
     ).text = f"""
 TOTAL: {len(data)}
+
 🔴 {status_count['ยังไม่ดำเนินการ 🔴']}
 🟡 {status_count['กำลังดำเนินการ 🟡']}
 🟢 {status_count['เสร็จสิ้น 🟢']}
 """
 
-    # ===== DETAIL + IMAGE =====
+    # ===== DETAIL =====
     for d in data:
 
         slide = prs.slides.add_slide(prs.slide_layouts[5])
+
         slide.shapes.title.text = f"{d[1]} | {d[2]}"
 
         text = f"""
 หน่วย: {d[1]}
+
 งาน: {d[2]}
-รายละเอียด: {d[3]}
+
+รายละเอียด:
+{d[3]}
+
 ความคืบหน้า: {d[4]}%
+
 สถานะ: {norm(d[5])}
-ปัญหา: {d[6]}
-วันที่: {d[8]}
+
+ปัญหา:
+{d[6]}
+
+วันที่:
+{d[8]}
 """
 
         slide.shapes.add_textbox(
-            Inches(0.5), Inches(0.5), Inches(6), Inches(4)
+            Inches(0.5),
+            Inches(1),
+            Inches(5),
+            Inches(4)
         ).text = text
 
-        # 🔥 ใส่ภาพ (สำคัญ)
+        # ===== IMAGE =====
         if d[7]:
+
             imgs = d[7].split(",")
 
             x = 6
             y = 1
 
             for img in imgs:
+
                 if img and os.path.exists(img):
+
                     try:
                         slide.shapes.add_picture(
                             img,
@@ -158,76 +192,154 @@ TOTAL: {len(data)}
                             Inches(y),
                             width=Inches(3)
                         )
+
                         x += 3
+
                         if x > 9:
                             x = 6
                             y += 2
+
                     except:
                         pass
 
     buf = io.BytesIO()
+
     prs.save(buf)
+
     buf.seek(0)
+
     return buf
 
 # ================= USER =================
 def user_app():
 
-    st.title("📌 พื้นที่สำหรับหน่วยรายงาน")
+    st.title("📌 รายงานการปฏิบัติ")
 
-    unit = st.selectbox("เลือกหน่วย", UNITS)
-    report_date = st.date_input("📅 วันที่รายงาน", datetime.date.today())
+    # ===== UNIT =====
+    unit_options = UNITS + ["อื่นๆ"]
 
-    conn, c = connect(unit)
+    selected_unit = st.selectbox(
+        "เลือกหน่วย",
+        unit_options
+    )
 
-    task = st.text_input("งาน").strip()
+    if selected_unit == "อื่นๆ":
+
+        other_unit = st.text_input(
+            "ระบุหน่วย / ชื่อบุคคล"
+        )
+
+        unit = other_unit.strip()
+
+    else:
+        unit = selected_unit
+
+    report_date = st.date_input(
+        "📅 วันที่รายงาน",
+        datetime.date.today()
+    )
+
+    conn, c = connect(unit if unit else "OTHER")
+
+    # ===== FORM =====
+    task = st.text_input("ภารกิจ").strip()
+
     detail = st.text_area("รายละเอียด")
-    progress = st.number_input("ความคืบหน้า (%)", 0, 100)
-    status = st.selectbox("สถานะ", STATUS)
+
+    progress = st.number_input(
+        "ความคืบหน้า (%)",
+        0,
+        100
+    )
+
+    status = st.selectbox(
+        "สถานะ",
+        STATUS
+    )
+
     problem = st.text_area("ปัญหา")
 
-    files = st.file_uploader("📸 แนบรูป", accept_multiple_files=True)
+    files = st.file_uploader(
+        "📸 แนบรูป",
+        accept_multiple_files=True
+    )
 
+    # ===== IMAGE =====
     images = []
+
     if files:
+
         for f in files:
+
             name = f"{time.time()}_{f.name}"
-            path = os.path.join(UPLOAD_DIR, name)
+
+            path = os.path.join(
+                UPLOAD_DIR,
+                name
+            )
+
             with open(path, "wb") as w:
                 w.write(f.getbuffer())
+
             images.append(path)
 
+    # ===== SAVE =====
     if st.button("📤 ส่งรายงาน"):
 
-        # history
+        if not unit:
+            st.error("กรุณาระบุหน่วย")
+            st.stop()
+
+        # ===== HISTORY =====
         c.execute("""
-        INSERT INTO history VALUES (NULL,?,?,?,?,?,?,?,?,?)
+        INSERT INTO history
+        VALUES (NULL,?,?,?,?,?,?,?,?,?)
         """, (
-            unit, task, detail, progress,
-            norm(status), problem,
+            unit,
+            task,
+            detail,
+            progress,
+            norm(status),
+            problem,
             ",".join(images),
             str(report_date),
             str(datetime.datetime.now())
         ))
 
-        # latest
+        # ===== REPORT =====
         existing = c.execute("""
-        SELECT id, progress, images FROM reports
+        SELECT id, progress, images
+        FROM reports
         WHERE unit=? AND task=?
-        ORDER BY id DESC LIMIT 1
-        """, (unit, task)).fetchone()
+        ORDER BY id DESC
+        LIMIT 1
+        """, (
+            unit,
+            task
+        )).fetchone()
 
         if existing:
+
             rid, old_progress, old_images = existing
 
-            new_progress = max(old_progress, progress)
+            new_progress = max(
+                old_progress,
+                progress
+            )
 
             old_list = old_images.split(",") if old_images else []
+
             new_list = old_list + images
 
             c.execute("""
             UPDATE reports
-            SET detail=?, progress=?, status=?, problem=?, images=?, report_date=?, time=?
+            SET detail=?,
+                progress=?,
+                status=?,
+                problem=?,
+                images=?,
+                report_date=?,
+                time=?
             WHERE id=?
             """, (
                 detail,
@@ -239,43 +351,94 @@ def user_app():
                 str(datetime.datetime.now()),
                 rid
             ))
+
         else:
+
             c.execute("""
-            INSERT INTO reports VALUES (NULL,?,?,?,?,?,?,?,?,?)
+            INSERT INTO reports
+            VALUES (NULL,?,?,?,?,?,?,?,?,?)
             """, (
-                unit, task, detail, progress,
-                norm(status), problem,
+                unit,
+                task,
+                detail,
+                progress,
+                norm(status),
+                problem,
                 ",".join(images),
                 str(report_date),
                 str(datetime.datetime.now())
             ))
 
         conn.commit()
-        st.success("บันทึกเรียบร้อย")
+
+        st.success("✅ บันทึกเรียบร้อย")
 
     st.stop()
 
 # ================= LOAD =================
 def load_history():
+
     data = []
-    for u in UNITS:
-        conn, c = connect(u)
-        rows = c.execute("SELECT * FROM history").fetchall()
-        for r in rows:
-            r = list(r)
-            r[5] = norm(r[5])
-            data.append(r)
+
+    folders = os.listdir(DB_DIR)
+
+    for f in folders:
+
+        try:
+            db = os.path.join(DB_DIR, f, "data.db")
+
+            conn = sqlite3.connect(db)
+
+            c = conn.cursor()
+
+            rows = c.execute("""
+            SELECT * FROM history
+            """).fetchall()
+
+            for r in rows:
+
+                r = list(r)
+
+                r[5] = norm(r[5])
+
+                data.append(r)
+
+        except:
+            pass
+
     return data
 
 def load_latest():
+
     data = []
-    for u in UNITS:
-        conn, c = connect(u)
-        rows = c.execute("SELECT * FROM reports").fetchall()
-        for r in rows:
-            r = list(r)
-            r[5] = norm(r[5])
-            data.append(r)
+
+    folders = os.listdir(DB_DIR)
+
+    for f in folders:
+
+        try:
+
+            db = os.path.join(DB_DIR, f, "data.db")
+
+            conn = sqlite3.connect(db)
+
+            c = conn.cursor()
+
+            rows = c.execute("""
+            SELECT * FROM reports
+            """).fetchall()
+
+            for r in rows:
+
+                r = list(r)
+
+                r[5] = norm(r[5])
+
+                data.append(r)
+
+        except:
+            pass
+
     return data
 
 # ================= ADMIN =================
@@ -284,38 +447,74 @@ def admin_app():
     st.title("🚨 STAFF6 COMMAND CENTER")
 
     history = load_history()
+
     latest = load_latest()
 
-    # FIX DATE RANGE
+    # ===== FILTER =====
+    all_units = sorted(
+        list(set([x[1] for x in history]))
+    )
+
     all_dates = []
+
     for d in history:
+
         try:
-            all_dates.append(datetime.datetime.strptime(d[8], "%Y-%m-%d").date())
+            all_dates.append(
+                datetime.datetime.strptime(
+                    d[8],
+                    "%Y-%m-%d"
+                ).date()
+            )
+
         except:
             pass
 
     min_date = min(all_dates) if all_dates else datetime.date.today()
+
     max_date = max(all_dates) if all_dates else datetime.date.today()
 
     with st.sidebar:
+
+        st.subheader("FILTER")
+
         if st.button("🚪 Logout"):
             st.session_state["login"] = False
             st.rerun()
 
-        unit_filter = st.selectbox("หน่วย", ["ทั้งหมด"] + UNITS)
-        from_date = st.date_input("From", min_date)
-        to_date = st.date_input("To", max_date)
+        unit_filter = st.selectbox(
+            "หน่วย",
+            ["ทั้งหมด"] + all_units
+        )
 
-    # FILTER
+        from_date = st.date_input(
+            "From",
+            min_date
+        )
+
+        to_date = st.date_input(
+            "To",
+            max_date
+        )
+
+    # ===== FILTER DATA =====
     filtered_history = []
+
     for d in history:
+
         try:
-            dd = datetime.datetime.strptime(d[8], "%Y-%m-%d").date()
+            dd = datetime.datetime.strptime(
+                d[8],
+                "%Y-%m-%d"
+            ).date()
+
         except:
             continue
 
-        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
-            continue
+        if unit_filter != "ทั้งหมด":
+
+            if d[1] != unit_filter:
+                continue
 
         if not (from_date <= dd <= to_date):
             continue
@@ -323,97 +522,178 @@ def admin_app():
         filtered_history.append(d)
 
     filtered_latest = []
+
     for d in latest:
-        if unit_filter != "ทั้งหมด" and d[1] != unit_filter:
-            continue
+
+        if unit_filter != "ทั้งหมด":
+
+            if d[1] != unit_filter:
+                continue
+
         filtered_latest.append(d)
 
-    # KPI
+    # ===== KPI =====
     st.subheader("📊 KPI")
 
-    status_list = [norm(x[5]) for x in filtered_latest]
+    status_list = [
+        norm(x[5]) for x in filtered_latest
+    ]
 
-    c1,c2,c3,c4 = st.columns(4)
-    c1.metric("📦 ทั้งหมด", len(filtered_latest))
-    c2.metric("🟡 กำลังดำเนินการ", status_list.count("กำลังดำเนินการ 🟡"))
-    c3.metric("🟢 เสร็จสิ้น", status_list.count("เสร็จสิ้น 🟢"))
-    c4.metric("🔴 ยังไม่ดำเนินการ", status_list.count("ยังไม่ดำเนินการ 🔴"))
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric(
+        "📦 ทั้งหมด",
+        len(filtered_latest)
+    )
+
+    c2.metric(
+        "🟡 กำลังดำเนินการ",
+        status_list.count("กำลังดำเนินการ 🟡")
+    )
+
+    c3.metric(
+        "🟢 เสร็จสิ้น",
+        status_list.count("เสร็จสิ้น 🟢")
+    )
+
+    c4.metric(
+        "🔴 ยังไม่ดำเนินการ",
+        status_list.count("ยังไม่ดำเนินการ 🔴")
+    )
 
     st.markdown("---")
 
-    # GRAPH
+    # ===== GRAPH =====
     st.subheader("📈 ความคืบหน้า")
 
     if filtered_latest:
-        df = pd.DataFrame(filtered_latest, columns=[
-            "ID","หน่วย","งาน","รายละเอียด","%","สถานะ",
-            "ปัญหา","รูป","วันที่","เวลา"
-        ])
+
+        df = pd.DataFrame(
+            filtered_latest,
+            columns=[
+                "ID",
+                "หน่วย",
+                "งาน",
+                "รายละเอียด",
+                "%",
+                "สถานะ",
+                "ปัญหา",
+                "รูป",
+                "วันที่",
+                "เวลา"
+            ]
+        )
 
         if unit_filter == "ทั้งหมด":
-            st.bar_chart(df.groupby("หน่วย")["%"].mean())
+            st.bar_chart(
+                df.groupby("หน่วย")["%"].mean()
+            )
         else:
-            st.bar_chart(df.groupby("งาน")["%"].mean())
+            st.bar_chart(
+                df.groupby("งาน")["%"].mean()
+            )
 
     st.markdown("---")
 
-    # REPORT
+    # ===== REPORT =====
     st.subheader("📄 รายงาน")
 
     for i, d in enumerate(filtered_history):
 
-        col1,col2 = st.columns([3,1])
+        col1, col2 = st.columns([3,1])
 
         with col1:
+
             st.markdown(f"""
 ### 🏷 {d[1]} | {d[2]} | {norm(d[5])}
 
 {d[3]}
 
-📊 {d[4]}%  
-⚠️ {d[6] if d[6] else "-"}  
-📅 {d[8]}  
+📊 {d[4]}%
+
+⚠️ {d[6] if d[6] else "-"}
+
+📅 {d[8]}
+
 🕒 {d[9]}
 """)
 
+            # ===== IMAGE =====
             if d[7]:
+
                 for img in d[7].split(","):
+
                     if img and os.path.exists(img):
-                        st.image(img, width=250)
+                        st.image(
+                            img,
+                            width=250
+                        )
 
         with col2:
-            if st.button("🗑 ลบ", key=f"{i}_{d[0]}"):
+
+            if st.button(
+                "🗑 ลบ",
+                key=f"{i}_{d[0]}"
+            ):
+
                 conn, c = connect(d[1])
-                c.execute("DELETE FROM reports WHERE id=?", (d[0],))
+
+                c.execute("""
+                DELETE FROM reports
+                WHERE id=?
+                """, (d[0],))
+
                 conn.commit()
+
                 st.rerun()
 
     st.markdown("---")
 
+    # ===== EXPORT =====
     if st.button("📤 Export PPT"):
+
         ppt = export_ppt(filtered_history)
-        st.download_button("📥 ดาวน์โหลด", ppt, file_name="STAFF6_REPORT.pptx")
+
+        st.download_button(
+            "📥 ดาวน์โหลด PowerPoint",
+            ppt,
+            file_name="STAFF6_REPORT.pptx"
+        )
 
 # ================= LOGIN =================
 def login_page():
+
     st.title("🔐 STAFF6 LOGIN")
 
     u = st.text_input("User")
-    p = st.text_input("Password", type="password")
+
+    p = st.text_input(
+        "Password",
+        type="password"
+    )
 
     if st.button("Login"):
+
         if u == ADMIN_USER and p == ADMIN_PASS:
+
             st.session_state["login"] = True
+
             st.rerun()
+
         else:
-            st.error("Login ไม่ถูกต้อง")
+            st.error("❌ Login ไม่ถูกต้อง")
 
 # ================= MAIN =================
 def main():
+
     if st.session_state["login"]:
+
         admin_app()
+
     else:
+
         login_page()
+
         user_app()
 
 main()
